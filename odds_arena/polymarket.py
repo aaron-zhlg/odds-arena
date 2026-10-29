@@ -28,6 +28,9 @@ class Market:
     event_slug: str | None = None
     group_title: str | None = None  # this market's option within the event, e.g. "Democratic Party"
     first_token: str | None = None  # CLOB token of the first outcome, for its price history
+    # True when the event's options are mutually exclusive (exactly one wins, e.g. "Which party wins?").
+    # Other events can have several Yes options (e.g. "ceasefire holds through Oct 31 / Nov 15").
+    neg_risk: bool = False
 
     @property
     def is_binary(self) -> bool:
@@ -81,6 +84,7 @@ def _to_market(raw: dict) -> Market:
         event_slug=event.get("slug"),
         group_title=raw.get("groupItemTitle") or None,
         first_token=(_parse_list(raw.get("clobTokenIds")) or [None])[0],
+        neg_risk=bool(raw.get("negRisk")),
     )
 
 

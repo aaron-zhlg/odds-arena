@@ -71,7 +71,7 @@ def _save_market(conn, m) -> None:
     fields = {
         "question": m.question, "end_date": m.end_date, "description": m.description, "slug": m.slug,
         "outcomes": json.dumps(m.outcomes, ensure_ascii=False), "event_id": m.event_id, "event_title": m.event_title,
-        "event_slug": m.event_slug, "group_title": m.group_title,
+        "event_slug": m.event_slug, "group_title": m.group_title, "neg_risk": int(m.neg_risk),
     }
     cols = ", ".join(fields)
     updates = ", ".join(f"{c} = excluded.{c}" for c in fields if c != "question")
@@ -118,6 +118,7 @@ def run_resolve(time_budget: float | None = None, log: Log = print) -> dict:
                 failed += 1
                 log(f"  failed to fetch {row['id']}: {e}")
                 continue
+            conn.execute("UPDATE markets SET neg_risk = ? WHERE id = ?", (int(m.neg_risk), m.id))
             try:
                 prices += _sync_prices(conn, m)
             except Exception as e:  # price history is nice to have; never block resolution on it

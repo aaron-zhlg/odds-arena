@@ -38,7 +38,7 @@ def api_leaderboard():
 def api_markets(limit: int = 50):
     with db.connect() as conn:
         markets = conn.execute(
-            """SELECT id, question, end_date, outcome, outcomes, event_id, event_title, event_slug, group_title
+            """SELECT id, question, end_date, outcome, outcomes, event_id, event_title, event_slug, group_title, neg_risk
                FROM markets ORDER BY COALESCE(resolved_at, end_date) DESC LIMIT ?""",
             (limit,),
         ).fetchall()
@@ -61,7 +61,7 @@ def api_market(market_id: str):
     with db.connect() as conn:
         m = conn.execute(
             """SELECT id, question, end_date, outcome, resolved_at, description, slug, outcomes,
-                      event_id, event_title, event_slug, group_title FROM markets WHERE id = ?""",
+                      event_id, event_title, event_slug, group_title, neg_risk FROM markets WHERE id = ?""",
             (market_id,),
         ).fetchone()
         if not m:

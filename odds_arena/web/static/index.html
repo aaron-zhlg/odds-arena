@@ -187,6 +187,12 @@
   .otable table th:first-child, .otable table td:first-child { text-align: left; white-space: normal; }
   .otable tr.me td { background: var(--sun-soft); font-weight: 600; }
   .otable a { color: inherit; text-decoration: none; }
+  .otable tfoot td { background: #fbf8f1; font-weight: 600; border-top: 1px solid var(--line-strong); }
+  .otable td.warn { color: #9a5b00; }
+  .otable td.pk { font-size: 12px; white-space: normal; }
+  .otable td.pk.hit { color: var(--yes); } .otable td.pk.hit::after { content: " ✓"; }
+  .otable td.pk.miss { color: var(--no); } .otable td.pk.miss::after { content: " ✗"; }
+  .hint-i { color: var(--muted); cursor: help; font-weight: 400; }
   .opt-note { color: #7a5200; background: var(--sun-soft); border-radius: 6px; padding: 1px 6px; font-size: 11px; }
   .siblings { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .siblings a { font-size: 12px; text-decoration: none; color: var(--text); border: 1px solid var(--line-strong); border-radius: 99px; padding: 3px 10px; background: var(--card); }
@@ -294,7 +300,7 @@
   <nav class="crumb" id="crumb" hidden><a href="/">← Odds Arena</a></nav>
   <section id="markets-section">
     <h2 id="markets-title">Markets</h2>
-    <p class="section-note">Each card is one Polymarket question, drawn for its type: a yes/no question shows the crowd's chance on a gauge, a matchup shows both sides, and a multi-option event lists its options. Pills are each model's call with its name; once Polymarket settles the question, ✓ / ✗ mark whether the model leaned the right way. <b>Crowd</b> is the Polymarket price when the models made their calls. Click a card for the full comparison.</p>
+    <p class="section-note">Each card is one Polymarket question, drawn for its type: a yes/no question shows the crowd's chance on a gauge, a matchup shows both sides, and a multi-option event lists its options. Pills are each model's pick and how sure it is (e.g. <span class="mono">openai → Yes 78%</span>); in a one-winner event, the pick is the option the model rates highest. Once Polymarket settles the question, ✓ / ✗ mark whether the pick was right. <b>Crowd</b> is the Polymarket price when the models made their calls. Click a card for the full comparison.</p>
     <div class="toolbar"><div class="filters" id="filters"></div><input id="search" class="search" type="search" placeholder="Search questions, options, events" hidden></div>
     <div class="cards" id="markets"></div>
     <a class="chip more" id="more" href="/markets">View all markets →</a>
@@ -496,11 +502,36 @@ function gauge(p) {
 
 const pill = (k, text, cls = '') => `<span class="pill${cls}${isSearch(k) ? ' hollow' : ''}" style="--c:${colorOf(k)}" title="${esc(MODEL_INFO[k] || k)}"><i></i>${esc(k)} ${text}</span>`;
 
+// A probability for the first outcome, read as a pick: the side above 50% and how sure the model is.
+function binaryPick(p, outcomes) {
+  if (p === 0.5) return { label: 'no pick', conf: 0.5 };
+  return p > 0.5 ? { label: outcomes[0], conf: p } : { label: outcomes[1], conf: 1 - p };
+}
+const pickPill = (k, p, m) => {
+  const pk = binaryPick(p, m.outcomes || ['Yes', 'No']);
+  return pill(k, `<span class="pick">→ ${esc(pk.label)}</span> <b>${pct(pk.conf)}</b>`, sideClass(p, m.outcome));
+};
+
+// Mutually exclusive event: each model's pick is the option it gave the highest chance.
+// Options are asked one at a time, so a model's chances needn't add up to 100%; `sum` shows how far off.
+function eventPicks(items) {
+  const winner = items.find(m => m.outcome === 1);
+  const models = [...new Set(items.flatMap(modelsOf))];
+  return models.map(k => {
+    const opts = items.filter(m => m.predictions[k]);
+    const best = opts.reduce((a, b) => (b.predictions[k].p > a.predictions[k].p ? b : a));
+    const sum = opts.reduce((t, m) => t + m.predictions[k].p, 0);
+    return { model: k, pick: best, p: best.predictions[k].p, sum, complete: opts.length === items.length,
+             verdict: winner ? (best.id === winner.id ? ' hit' : ' miss') : '' };
+  });
+}
+const isExclusive = items => items.some(m => m.neg_risk);
+
 function yesNoCard(m) {
   const ms = modelsOf(m);
   return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
     <div class="top"><div><div class="kind">Yes / No</div><div class="ttl">${esc(m.question)}</div></div>${m.outcome === null ? gauge(crowdOf(m)) : ''}</div>
-    ${ms.length ? `<div class="pills-label">Model calls · chance of Yes</div><div class="pills">${ms.map(k => pill(k, `<b>${pct(m.predictions[k].p)}</b>`, sideClass(m.predictions[k].p, m.outcome))).join('')}</div>` : '<div class="pills-label">No model calls yet</div>'}
+    ${ms.length ? `<div class="pills-label">Model picks · how sure</div><div class="pills">${ms.map(k => pickPill(k, m.predictions[k].p, m)).join('')}</div>` : '<div class="pills-label">No model calls yet</div>'}
     <div class="foot">${statusTag(m)}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div>
   </article>`;
 }
@@ -511,10 +542,7 @@ function matchupCard(m) {
   return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
     <div><div class="kind">${esc(a)} vs ${esc(b)}</div><div class="ttl">${esc(m.question)}</div></div>
     <div class="teams">${team(a, c, 0)}${team(b, c == null ? null : 1 - c, 1)}</div>
-    ${ms.length ? `<div class="pills-label">Model picks (crowd shown above)</div><div class="pills">${ms.map(k => {
-      const p = m.predictions[k].p, pick = p >= 0.5 ? a : b;
-      return pill(k, `<span class="pick">→ ${esc(pick)}</span> <b>${pct(Math.max(p, 1 - p))}</b>`, sideClass(p, m.outcome));
-    }).join('')}</div>` : '<div class="pills-label">No model calls yet</div>'}
+    ${ms.length ? `<div class="pills-label">Model picks · how sure (crowd shown above)</div><div class="pills">${ms.map(k => pickPill(k, m.predictions[k].p, m)).join('')}</div>` : '<div class="pills-label">No model calls yet</div>'}
     <div class="foot">${statusTag(m)}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div>
   </article>`;
 }
@@ -531,9 +559,13 @@ function eventCard(g) {
       <span class="on">${esc(m.group_title || m.question)}</span><span class="cr">${crowdOf(m) == null ? '–' : pct(crowdOf(m))}</span><span class="mr">${calls}</span></div>`;
   };
   const settled = items.filter(m => m.outcome !== null).length;
+  const exclusive = isExclusive(items);
+  const picks = exclusive ? eventPicks(items) : [];
   return `<article class="card" tabindex="0" data-id="${esc(items[0].id)}">
-    <div><div class="kind">${items.length} options · crowd chance, then each model</div><div class="ttl">${esc(g.title || items[0].question)}</div></div>
+    <div><div class="kind">${items.length} options · ${exclusive ? 'one winner' : 'several can be Yes'} · chance of each</div><div class="ttl">${esc(g.title || items[0].question)}</div></div>
     <div class="orows">${shownOpts.map(row).join('')}${items.length > 3 ? `<div class="more-opts">+${items.length - 3} more options · open for all</div>` : ''}</div>
+    ${picks.length ? `<div class="pills-label">Model picks · who wins</div><div class="pills">${picks.map(x =>
+      pill(x.model, `<span class="pick">→ ${esc(x.pick.group_title || x.pick.question)}</span> <b>${pct(x.p)}</b>`, x.verdict)).join('')}</div>` : ''}
     <div class="foot"><span>${settled ? `${settled}/${items.length} settled` : '<span class="badge open">Open</span>'}</span><span class="mono">${items[0].end_date ? 'closes ' + esc(items[0].end_date.slice(0, 10)) : ''}</span></div>
   </article>`;
 }
@@ -596,7 +628,8 @@ function renderDetail(d) {
       const verdict = !resolved || isCrowd ? ''
         : p.probability === 0.5 ? ` <span class="verdict">no side · Brier ${p.brier.toFixed(3)}</span>`
         : ` <span class="verdict ${called === d.outcome ? 'hit' : 'miss'}">${called === d.outcome ? '✓ right side' : '✗ wrong side'} · Brier ${p.brier.toFixed(3)}</span>`;
-      const label = isYesNo(d) ? '' : ` <span style="color:var(--muted)">→ ${esc(p.probability >= 0.5 ? o0 : o1)}</span>`;
+      const pk = binaryPick(p.probability, d.outcomes);
+      const label = isCrowd ? '' : ` <span style="color:var(--text)">→ ${esc(pk.label)}${pk.label === 'no pick' ? '' : ' ' + pct(pk.conf)}</span>`;
       return `<div class="drow${isCrowd ? ' crowdrow' : ''}" style="--c:${colorOf(p.model)}">
         <div class="dn">${sw(p.model)}${isCrowd ? 'crowd' : esc(p.model)}</div>
         <div class="dtrack"><span class="mid"></span>${crowd != null && !isCrowd ? `<span class="crowd" style="left:${crowd * 100}%"></span>` : ''}<span class="dot${isSearch(p.model) ? ' hollow' : ''}" style="left:${p.probability * 100}%"></span></div>
@@ -612,11 +645,27 @@ function renderDetail(d) {
       predictions: Object.fromEntries(d.predictions.map(p => [p.model, p.probability])) }, ...d.siblings] : [];
   const optModels = [...new Set(opts.flatMap(o => Object.keys(o.predictions)))].filter(k => k !== 'coinflip')
     .sort((a, b) => (a === 'market' ? -1 : b === 'market' ? 1 : a.localeCompare(b)));
-  const optTable = opts.length ? `<h4>All options in this event · chance of each</h4><div class="otable"><table>
+  const exclusive = !!d.neg_risk;
+  const evPicks = exclusive && opts.length ? Object.fromEntries(eventPicks(opts.map(o => ({ ...o,
+    predictions: Object.fromEntries(Object.entries(o.predictions).map(([k, v]) => [k, { p: v }])) }))).map(x => [x.model, x])) : {};
+  const totals = exclusive ? `<tfoot>
+      <tr><td>Total <span class="hint-i" title="A model is asked about each option on its own, so its chances needn't add up to 100%. Far from 100% means its answers contradict each other.">ⓘ</span></td>${optModels.map(k => {
+        const x = k === 'market' ? null : evPicks[k];
+        const sum = opts.reduce((t, o) => t + (o.predictions[k] ?? 0), 0);
+        const off = x && x.complete && Math.abs(sum - 1) > 0.15;
+        return `<td class="mono${off ? ' warn' : ''}">${pct(sum)}${off ? ' ⚠' : ''}</td>`;
+      }).join('')}</tr>
+      <tr><td>Pick</td>${optModels.map(k => {
+        // the crowd's pick is simply its highest-priced option
+        const crowdBest = opts.filter(o => o.predictions.market != null).sort((a, b) => b.predictions.market - a.predictions.market)[0];
+        const x = k === 'market' ? (crowdBest && { pick: crowdBest, verdict: '' }) : evPicks[k];
+        return `<td class="pk${x ? x.verdict : ''}">${x ? esc(x.pick.group_title || x.pick.question) : '–'}</td>`;
+      }).join('')}</tr></tfoot>` : '';
+  const optTable = opts.length ? `<h4>All options in this event · chance of each${exclusive ? ' · one winner' : ' · several can be Yes'}</h4><div class="otable"><table>
     <thead><tr><th>Option</th>${optModels.map(k => `<th>${sw(k)}${k === 'market' ? 'crowd' : esc(k)}</th>`).join('')}</tr></thead>
     <tbody>${opts.sort((a, b) => (b.predictions.market ?? -1) - (a.predictions.market ?? -1)).map(o => `<tr class="${o.id === d.id ? 'me' : ''}">
       <td><a href="#market/${encodeURIComponent(o.id)}">${esc(o.group_title || o.question)}</a>${o.outcome === 1 ? ' <span style="color:var(--yes)">✓ won</span>' : ''}</td>
-      ${optModels.map(k => `<td class="mono">${o.predictions[k] == null ? '–' : pct(o.predictions[k])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '';
+      ${optModels.map(k => `<td class="mono">${o.predictions[k] == null ? '–' : pct(o.predictions[k])}</td>`).join('')}</tr>`).join('')}</tbody>${totals}</table></div>` : '';
 
   return `<button class="close" aria-label="Close" onclick="closeDetail()">×</button>
     ${badgeFor(d).replace('class="badge', 'style="display:inline-block;width:auto;padding:5px 10px" class="badge')}
