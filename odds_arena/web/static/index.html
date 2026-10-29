@@ -722,7 +722,6 @@ function eventCard(g) {
 function renderLegend() {
   const ai = [...new Set(allModels.filter(k => k !== 'market').map(baseOf))];
   document.getElementById('legend-bar').innerHTML =
-    `<span><b>Big number</b>&nbsp;= the crowd: the live Polymarket price</span>` +
     ai.map(k => `<span><span class="tdot static" style="--c:${colorOf(k)}">${initialOf(k)}</span>${esc(k)}</span>`).join('') +
     `<span class="muted">AI models read fresh web search results, never the price</span>`;
 }
