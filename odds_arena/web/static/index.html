@@ -103,11 +103,30 @@
   .filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
   .chip { cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--muted); padding: 6px 14px; border-radius: 99px; font: inherit; font-size: 13px; transition: all .2s; }
   .chip.on { color: #000; background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 18px -4px var(--cyan); }
-  .market { display: grid; grid-template-columns: 1fr 260px 64px; gap: 18px; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--line); }
-  .market:last-child { border-bottom: 0; }
-  .market { cursor: pointer; transition: background .15s; }
-  .market:hover { background: rgba(255,255,255,.035); }
-  .market:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+  /* Markets table: one column per model, labelled by name */
+  .mtable { width: 100%; border-collapse: separate; border-spacing: 0; }
+  .mtable th, .mtable td { padding: 12px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .mtable tbody tr:last-child td { border-bottom: 0; }
+  .mtable th { position: sticky; top: 0; background: #10101b; z-index: 1; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text); font-weight: 500; text-align: center; }
+  .mtable th .swatch { margin-right: 6px; vertical-align: -1px; }
+  .mtable th.ref { color: var(--muted); }
+  .mtable th.qh, .mtable td.qcell { text-align: left; position: sticky; left: 0; background: #10101b; z-index: 2; white-space: normal; min-width: 280px; max-width: 380px; padding-left: 18px; box-shadow: 1px 0 0 var(--line); }
+  .mtable th.qh { z-index: 3; color: var(--muted); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+  .mtable tr.market { cursor: pointer; }
+  .mtable tr.market:hover td { background-color: rgba(255,255,255,.035); }
+  .mtable tr.market:hover td.qcell { background-color: #171724; }
+  .mtable tr.market:focus-visible td.qcell { box-shadow: inset 3px 0 0 var(--cyan), 1px 0 0 var(--line); }
+  .mtable .q { font-weight: 500; line-height: 1.35; }
+  .mtable .meta { color: var(--muted); font-size: 12px; margin-top: 4px; display: flex; gap: 8px; align-items: center; }
+  .mtable .meta .badge { display: inline-block; width: auto; padding: 2px 7px; font-size: 10px; }
+  .cell { text-align: center; min-width: 72px; }
+  .cell .v { font-family: "JetBrains Mono", monospace; font-weight: 600; font-size: 14px; }
+  .cell .mini { height: 3px; margin: 6px auto 0; width: 48px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .cell .mini i { display: block; height: 100%; background: var(--c); }
+  .cell.hit { background: rgba(61,255,162,.07); } .cell.hit .v::after { content: " ✓"; color: var(--yes); font-size: 12px; }
+  .cell.miss { background: rgba(255,77,109,.07); } .cell.miss .v::after { content: " ✗"; color: var(--no); font-size: 12px; }
+  .cell.none { color: var(--muted); }
+  .cell.ref .v { color: var(--muted); }
 
   /* Market detail drawer */
   .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(4,4,10,.6); backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity .2s; }
@@ -142,18 +161,11 @@
   .pred .verdict { font-size: 12px; margin-left: 6px; }
   .verdict.hit { color: var(--yes); } .verdict.miss { color: var(--no); }
   .loading { color: var(--muted); padding: 40px 0; }
-  .market .q { font-weight: 500; }
-  .market .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .track { position: relative; height: 26px; }
-  .track::before { content: ""; position: absolute; left: 0; right: 0; top: 12px; height: 2px; background: linear-gradient(90deg, var(--no), rgba(255,255,255,.15) 50%, var(--yes)); opacity: .5; }
-  .track .mid { position: absolute; left: 50%; top: 6px; width: 1px; height: 14px; background: rgba(255,255,255,.2); }
-  .dot { position: absolute; top: 6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--c); border: 2px solid var(--bg); box-shadow: 0 0 10px var(--c); transition: transform .15s; cursor: default; }
-  .dot:hover { transform: scale(1.5); z-index: 2; }
   .badge { text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .1em; padding: 5px 0; border-radius: 8px; }
   .badge.yes { color: var(--yes); background: rgba(61,255,162,.1); box-shadow: inset 0 0 0 1px rgba(61,255,162,.35); }
   .badge.no { color: var(--no); background: rgba(255,77,109,.1); box-shadow: inset 0 0 0 1px rgba(255,77,109,.35); }
   .badge.open { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
-  .axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+  .legend-note { color: var(--muted); font-size: 12px; margin: 10px 2px 0; }
 
   .tip { position: fixed; pointer-events: none; z-index: 10; max-width: 300px; padding: 10px 12px; border-radius: 10px; background: #12121e; border: 1px solid var(--line); font-size: 13px; opacity: 0; transition: opacity .12s; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
   .tip b { color: var(--c); }
@@ -167,8 +179,7 @@
     .podium { grid-template-columns: 1fr; }
     .step.p1 { order: -1; }
     .grid2 { grid-template-columns: 1fr; }
-    .market { grid-template-columns: 1fr 56px; }
-    .market .track-wrap { grid-column: 1 / -1; grid-row: 2; }
+    .mtable th.qh, .mtable td.qcell { min-width: 190px; max-width: 220px; padding-left: 14px; }
   }
   @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } .step { opacity: 1; transform: none; } }
 </style>
@@ -187,6 +198,14 @@
       <div class="stat"><b class="mono" data-count="pending">0</b><span>Awaiting result</span></div>
     </div>
   </header>
+
+  <section>
+    <h2>Markets</h2>
+    <div class="filters" id="filters"></div>
+    <div class="panel" id="markets"></div>
+    <p class="legend-note">Each cell is that model's P(Yes). <b style="color:var(--yes)">✓</b> / <b style="color:var(--no)">✗</b> once resolved: whether the model was on the right side of 50%. <span class="mono">market</span> and <span class="mono">coinflip</span> are reference baselines. Click a row for details.</p>
+    <button class="chip more" id="more" onclick="shown += 20; renderMarkets()">Show more</button>
+  </section>
 
   <section id="podium-section">
     <h2>Podium</h2>
@@ -213,12 +232,6 @@
     </div>
   </section>
 
-  <section>
-    <h2>Markets</h2>
-    <div class="filters" id="filters"></div>
-    <div class="panel" id="markets"></div>
-    <button class="chip more" id="more" onclick="shown += 20; renderMarkets()">Show more</button>
-  </section>
 
   <footer>Odds Arena · <a href="https://github.com/aaron-zhlg/odds-arena">GitHub</a></footer>
 </main>
@@ -320,6 +333,10 @@ function renderCalibration(markets, models) {
 }
 
 let allMarkets = [], allModels = [], filter = 'all', shown = 20;
+const MODEL_INFO = {
+  market: 'Baseline: the Polymarket price when the prediction was made (the crowd)',
+  coinflip: 'Baseline: always 50%. Anything useful should beat it',
+};
 function renderMarkets() {
   const el = document.getElementById('markets');
   const all = allMarkets.filter(m => filter === 'all' || (filter === 'open' ? m.outcome === null : m.outcome !== null));
@@ -327,18 +344,23 @@ function renderMarkets() {
   const more = document.getElementById('more');
   more.style.display = all.length > shown ? '' : 'none';
   if (!list.length) { el.innerHTML = '<div class="empty">No markets here yet.</div>'; return; }
-  el.innerHTML = list.map(m => {
-    const dots = allModels.filter(k => m.predictions[k]).map(k => {
-      const p = m.predictions[k], c = colorOf(k);
-      return `<span class="dot" style="left:${p.p * 100}%;--c:${c}" data-tip="<b>${esc(k)}</b> · ${pct(p.p)} yes${p.rationale ? '<br>' + esc(p.rationale) : ''}"></span>`;
+  const ref = k => k === 'market' || k === 'coinflip';
+  const head = `<thead><tr><th class="qh">Question</th>${allModels.map(k =>
+    `<th class="${ref(k) ? 'ref' : ''}" title="${esc(MODEL_INFO[k] || k)}"><span class="swatch" style="--c:${colorOf(k)}"></span>${esc(k)}</th>`).join('')}</tr></thead>`;
+  const rows = list.map(m => {
+    const cells = allModels.map(k => {
+      const p = m.predictions[k];
+      if (!p) return '<td class="cell none">–</td>';
+      // Exactly 50% picks no side, so it is neither right nor wrong.
+      const side = m.outcome === null || p.p === 0.5 ? '' : ((p.p > 0.5 ? 1 : 0) === m.outcome ? ' hit' : ' miss');
+      return `<td class="cell${side}${ref(k) ? ' ref' : ''}" style="--c:${colorOf(k)}" title="${esc(k)}: ${pct(p.p)} yes${p.rationale ? ' · ' + esc(p.rationale) : ''}">
+        <div class="v">${pct(p.p)}</div><div class="mini"><i style="width:${p.p * 100}%"></i></div></td>`;
     }).join('');
-    const badge = m.outcome === null ? '<div class="badge open">OPEN</div>' : m.outcome ? '<div class="badge yes">YES</div>' : '<div class="badge no">NO</div>';
-    return `<div class="market" tabindex="0" role="button" data-id="${esc(m.id)}">
-      <div><div class="q">${esc(m.question)}</div><div class="meta mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</div></div>
-      <div class="track-wrap"><div class="track"><span class="mid"></span>${dots}</div><div class="axis mono"><span>NO</span><span>50</span><span>YES</span></div></div>
-      ${badge}
-    </div>`;
+    const status = m.outcome === null ? '<span class="badge open">OPEN</span>' : m.outcome ? '<span class="badge yes">YES</span>' : '<span class="badge no">NO</span>';
+    return `<tr class="market" tabindex="0" data-id="${esc(m.id)}">
+      <td class="qcell"><div class="q">${esc(m.question)}</div><div class="meta">${status}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div></td>${cells}</tr>`;
   }).join('');
+  el.innerHTML = `<table class="mtable">${head}<tbody>${rows}</tbody></table>`;
 }
 
 // Market detail: opened via #market/<id>, so links are shareable and Back closes it.
@@ -363,10 +385,10 @@ function renderDetail(d) {
 
   const preds = d.predictions.length ? d.predictions.map(p => {
     const c = colorOf(p.model);
-    const called = p.probability >= 0.5 ? 1 : 0;
-    const verdict = resolved
-      ? `<span class="verdict ${called === d.outcome ? 'hit' : 'miss'}">${called === d.outcome ? '✓ right side' : '✗ wrong side'} · Brier ${p.brier.toFixed(3)}</span>`
-      : '';
+    const called = p.probability > 0.5 ? 1 : 0;
+    const verdict = !resolved ? ''
+      : p.probability === 0.5 ? `<span class="verdict">no side · Brier ${p.brier.toFixed(3)}</span>`
+      : `<span class="verdict ${called === d.outcome ? 'hit' : 'miss'}">${called === d.outcome ? '✓ right side' : '✗ wrong side'} · Brier ${p.brier.toFixed(3)}</span>`;
     const price = p.market_price != null ? ` · market was ${pct(p.market_price)} then` : '';
     return `<div class="pred" style="--c:${c}">
       <div><span class="swatch"></span><b>${esc(p.model)}</b></div>
@@ -440,7 +462,10 @@ async function load() {
   ]);
   const board = lb.leaderboard;
   allMarkets = markets;
-  allModels = [...new Set([...board.map(r => r.model), ...markets.flatMap(m => Object.keys(m.predictions))])];
+  // Fixed order: the market baseline first, contenders alphabetically, coin flip last.
+  const rank = k => k === 'market' ? 0 : k === 'coinflip' ? 2 : 1;
+  allModels = [...new Set([...board.map(r => r.model), ...markets.flatMap(m => Object.keys(m.predictions))])]
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   colorOf = m => PALETTE[allModels.indexOf(m) % PALETTE.length];
 
   const counts = {
