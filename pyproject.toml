@@ -27,3 +27,6 @@ include = ["odds_arena*"]
 
 [tool.setuptools.package-data]
 "odds_arena.web" = ["static/*"]
+
+[tool.vercel]
+entrypoint = "odds_arena.web.app:app"
