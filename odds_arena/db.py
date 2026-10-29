@@ -50,6 +50,10 @@ CREATE TABLE IF NOT EXISTS predictions (
     created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD HH24:MI:SS'),
     UNIQUE (market_id, model)
 );
+-- Supabase exposes public tables through its REST API. RLS with no policies blocks that;
+-- this app connects directly as the table owner, which RLS does not restrict.
+ALTER TABLE markets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
 """
 
 
