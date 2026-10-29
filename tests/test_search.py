@@ -150,6 +150,8 @@ def test_resolve_stores_prices_and_history_reads_the_db(monkeypatch, tmp_path):
     assert c.get("/api/markets/9/history?range=1d").json()["points"] == [[10 * day, 0.4], [10 * day + 3600, 0.6], [after, 0.7]]
     assert c.get("/api/markets/none/history").json()["points"] == []
     assert c.get("/api/markets/9/history?range=5y").status_code == 400
+    listed = {m["id"]: m for m in c.get("/api/markets").json()}
+    assert (listed["9"]["price_now"], listed["9"]["price_at"]) == (0.7, after)  # the latest stored price
 
 
 def test_markets_api_returns_outcomes_events_and_siblings(monkeypatch, tmp_path):

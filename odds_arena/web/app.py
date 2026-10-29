@@ -44,10 +44,18 @@ def api_markets(limit: int = 50):
             (limit,),
         ).fetchall()
         preds = conn.execute("SELECT market_id, model, probability, rationale FROM predictions").fetchall()
+        # The crowd's latest price, kept current by the resolve job (every few minutes), vs. the snapshot
+        # stored with the predictions, which is what models are scored against.
+        latest = {r["market_id"]: (r["p"], r["t"]) for r in conn.execute(
+            """SELECT pp.market_id, pp.p, pp.t FROM price_points pp
+               JOIN (SELECT market_id, MAX(t) AS t FROM price_points GROUP BY market_id) l
+                 ON l.market_id = pp.market_id AND l.t = pp.t""").fetchall()}
     by_market: dict[str, dict] = {}
     for p in preds:
         by_market.setdefault(p["market_id"], {})[p["model"]] = {"p": p["probability"], "rationale": p["rationale"]}
-    return [_market_json(m) | {"predictions": by_market.get(m["id"], {})} for m in markets]
+    return [_market_json(m) | {"predictions": by_market.get(m["id"], {}),
+                                "price_now": latest.get(m["id"], (None, None))[0],
+                                "price_at": latest.get(m["id"], (None, None))[1]} for m in markets]
 
 
 def _market_json(row) -> dict:

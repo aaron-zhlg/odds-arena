@@ -149,7 +149,7 @@
   .tdot.hit { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--yes); }
   .tdot.miss { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--no); }
   .tends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin: -4px 8px 0; }
-  .cols { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 10px; margin-top: auto; padding-top: 18px; }
+  .cols { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 10px; margin-top: auto; padding-top: 18px; }
   .cols .c50 { position: absolute; left: 0; right: 0; top: calc(18px + 45px); border-top: 1px dashed rgba(31,36,48,.2); font-size: 9px; color: var(--muted); text-align: left; line-height: 0; }
   .cols .c50::before { content: ""; }
   .col { text-align: center; min-width: 0; }
@@ -172,6 +172,7 @@
   .dn.miss { background: var(--no-bg); } .dn.miss .dpick::after { content: " ✗"; color: var(--no); }
   .olabel { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
   .olabel b { font-family: "JetBrains Mono", monospace; }
+  .crowd-tag { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
   .won { color: var(--yes); font-weight: 700; }
   /* Market cards: the form follows the question type */
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
@@ -600,53 +601,67 @@ function donut(shares, centre) {
     <text x="${C}" y="${C + 5}" text-anchor="middle" font-family="Space Grotesk" font-weight="700" font-size="14" fill="#1f2430">${esc(centre)}</text></svg>`;
 }
 const initialOf = k => INITIALS[baseOf(k)] || baseOf(k)[0].toUpperCase();
+function ago(t) {
+  if (!t) return '';
+  const min = Math.max(0, Math.round((Date.now() / 1000 - t) / 60));
+  return min < 60 ? `${min} min ago` : min < 1440 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} d ago`;
+}
 function whenLeft(end) {
   if (!end) return '';
   const days = Math.ceil((Date.parse(end) - Date.now()) / 86400000);
   return days < 0 ? 'closed' : days === 0 ? 'closes today' : days === 1 ? '1 day left' : `${days} days left`;
 }
 
-// One 0-100% track for an option: the crowd as a sunny fill, each AI model as a lettered dot at its chance.
-// Dots sit on three lanes so close calls don't hide each other; exact numbers are on hover and in the detail.
+// Every card: the crowd's latest price as the headline number; the charts show only the AI models.
+const nowOf = m => m.price_now ?? crowdOf(m);
+const headline = (p, label, t) => `<div class="headline"><b>${p == null ? '–' : pct(p)}</b><span>crowd says ${esc(label)}${t ? ` · ${ago(t)}` : ''}</span></div>`;
+
+// One 0-100% track for an option, AI models only: each a lettered dot at its chance (three lanes so
+// close calls don't hide each other). Exact numbers are on hover and in the detail.
 function track(m, label = firstOpt(m)) {
-  const c = crowdOf(m);
   const dots = modelsOf(m).map((k, i) => {
     const p = m.predictions[k].p;
     return `<span class="tdot${sideClass(p, m.outcome)}" style="left:${p * 100}%;top:${[0, 9, 18][i % 3]}px;--c:${colorOf(k)}"
       data-tip="<b>${esc(k)}</b> · ${pct(p)} ${esc(label)}">${initialOf(k)}</span>`;
   }).join('');
-  return `<div class="track"><div class="tband"><div class="tfill" style="width:${(c ?? 0) * 100}%"></div></div><span class="tmid"></span>${dots}</div>`;
+  return `<div class="track"><div class="tband"></div><span class="tmid"></span>${dots}</div>`;
 }
 
 const cardTop = m => `<div class="ctop"><span class="cat">${esc(m.category || 'Other')}</span><span>${m.outcome !== null ? statusTag(m) : esc(whenLeft(m.end_date))}</span></div>`;
 
-// Yes/No: one column per forecaster (crowd first), height = chance of Yes, the number on top.
-function yesNoCard(m) {
-  const who = ['market', ...modelsOf(m)];
+// Columns, one per AI model: height = its chance of `label`, the number on top, a 50% guide.
+function columns(m, label) {
   const col = k => {
-    const p = k === 'market' ? crowdOf(m) : m.predictions[k].p;
-    if (p == null) return '';
-    return `<div class="col${k === 'market' ? ' crowd' : sideClass(p, m.outcome)}" style="--c:${colorOf(k)}"
-        data-tip="<b>${k === 'market' ? 'crowd' : esc(k)}</b> · ${pct(p)} Yes">
+    const p = m.predictions[k].p;
+    return `<div class="col${sideClass(p, m.outcome)}" style="--c:${colorOf(k)}" data-tip="<b>${esc(k)}</b> · ${pct(p)} ${esc(label)}">
       <div class="cbox"><span class="cval" style="bottom:${p * 100}%">${pct(p)}</span><div class="cbar" style="height:${p * 100}%"></div></div>
-      <div class="cname">${k === 'market' ? 'crowd' : esc(k)}</div></div>`;
+      <div class="cname">${esc(k)}</div></div>`;
   };
+  const ms = modelsOf(m);
+  return ms.length
+    ? `<div class="cols"><span class="c50"><span style="background:var(--card);padding:0 3px 0 0;position:relative;top:-1px">50</span></span>${ms.map(col).join('')}</div>`
+    : '<div class="sub">No AI calls yet</div>';
+}
+
+function yesNoCard(m) {
   return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
     ${cardTop(m)}
     <div class="ttl">${esc(m.question)}</div>
-    <div class="sub">Chance of Yes${m.outcome !== null ? ` · resolved ${esc(winner(m))}` : ''}</div>
-    <div class="cols"><span class="c50"><span style="background:var(--card);padding:0 3px 0 0;position:relative;top:-1px">50</span></span>${who.map(col).join('')}</div>
+    ${m.outcome !== null ? `<div class="sub">Resolved ${esc(winner(m))}</div>` : headline(nowOf(m), 'Yes', m.price_at)}
+    <div class="sub">AI models · chance of Yes</div>
+    ${columns(m, 'Yes')}
   </article>`;
 }
 
 function matchupCard(m) {
-  const [a, b] = m.outcomes, c = crowdOf(m);
+  const [a, b] = m.outcomes, c = nowOf(m);
+  const lead = c == null || c >= 0.5 ? { p: c, name: a } : { p: 1 - c, name: b };
   return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
     ${cardTop(m)}
     <div class="ttl">${esc(m.question)}</div>
-    <div class="sides"><span><b>${c == null ? '–' : pct(c)}</b> ${esc(a)}</span><span>${esc(b)} <b>${c == null ? '–' : pct(1 - c)}</b></span></div>
-    ${track(m, a)}
-    <div class="tends"><span>← ${esc(b)}</span><span>${esc(a)} →</span></div>
+    ${m.outcome !== null ? `<div class="sub">Resolved ${esc(winner(m))}</div>` : headline(lead.p, lead.name, m.price_at)}
+    <div class="sub">AI models · chance of ${esc(a)} (vs ${esc(b)})</div>
+    ${columns(m, a)}
   </article>`;
 }
 
@@ -655,38 +670,40 @@ function donutCard(g, items) {
   const top = items.slice(0, 3), rest = items.slice(3);
   const opts = top.map((m, i) => ({ m, color: OPT_COLORS[i] }));
   const winner = items.find(m => m.outcome === 1);
-  const who = ['market', ...[...new Set(items.flatMap(modelsOf))].sort()];
+  const crowdTop = items.reduce((a, b) => ((nowOf(b) ?? -1) > (nowOf(a) ?? -1) ? b : a));
   const chart = k => {
-    const share = m => (k === 'market' ? crowdOf(m) : m.predictions[k]?.p) ?? 0;
+    const share = m => m.predictions[k]?.p ?? 0;
     const shares = opts.map(o => ({ p: share(o.m), color: o.color, m: o.m }));
     if (rest.length) shares.push({ p: rest.reduce((t, m) => t + share(m), 0), color: OTHER_COLOR, m: null });
     if (!shares.some(x => x.p > 0)) return '';
     const pick = items.reduce((a, b) => (share(b) > share(a) ? b : a));
-    const verdict = winner && k !== 'market' ? (pick.id === winner.id ? ' hit' : ' miss') : '';
+    const verdict = winner ? (pick.id === winner.id ? ' hit' : ' miss') : '';
     const tip = shares.map(x => `${esc(x.m ? (x.m.group_title || x.m.question) : 'Other')}: ${pct(x.p)}`).join('<br>');
-    return `<div class="dn${verdict}" data-tip="<b>${k === 'market' ? 'crowd' : esc(k)}</b><br>${tip}">
-      ${donut(shares, k === 'market' ? '◎' : initialOf(k))}<div class="dname">${k === 'market' ? 'crowd' : esc(k)}</div><div class="dpick">${esc(pick.group_title || pick.question)}</div></div>`;
+    return `<div class="dn${verdict}" data-tip="<b>${esc(k)}</b><br>${tip}">
+      ${donut(shares, initialOf(k))}<div class="dname">${esc(k)}</div><div class="dpick">${esc(pick.group_title || pick.question)}</div></div>`;
   };
+  const ai = [...new Set(items.flatMap(modelsOf))].sort();
   return `<article class="card" tabindex="0" data-id="${esc(head.id)}">
     <div class="ctop"><span class="cat">${esc(head.category || 'Other')}</span><span>${esc(whenLeft(head.end_date))}</span></div>
     <div class="ttl">${esc(g.title || head.question)}</div>
+    ${winner ? `<div class="sub">Won by ${esc(winner.group_title || winner.question)}</div>` : headline(nowOf(crowdTop), crowdTop.group_title || crowdTop.question, crowdTop.price_at)}
     <div class="olegend">${opts.map(o => `<span><i style="background:${o.color}"></i>${esc(o.m.group_title || o.m.question)}</span>`).join('')}${rest.length ? `<span><i style="background:${OTHER_COLOR}"></i>${rest.length} other${rest.length > 1 ? 's' : ''}</span>` : ''}</div>
-    <div class="donuts">${who.map(chart).join('')}</div>
+    ${ai.length ? `<div class="donuts">${ai.map(chart).join('')}</div>` : '<div class="sub">No AI calls yet</div>'}
   </article>`;
 }
 
 function eventCard(g) {
-  const items = [...g.items].sort((x, y) => (crowdOf(y) ?? -1) - (crowdOf(x) ?? -1));
-  const exclusive = isExclusive(items);
-  if (exclusive) return donutCard(g, items);  // shares add up to 100%: one donut per model
+  const items = [...g.items].sort((x, y) => (nowOf(y) ?? -1) - (nowOf(x) ?? -1));
+  if (isExclusive(items)) return donutCard(g, items);  // shares add up to 100%: one donut per model
+  // Options that can each happen: one row per option with the crowd's price, AI models as dots.
   const head = items.find(m => m.outcome !== null) || items[0];
   const row = m => `<div class="orow" data-id="${esc(m.id)}">
-      <div class="olabel"><span class="on">${esc(m.group_title || m.question)}${m.outcome === 1 ? ' <span class="won">✓</span>' : ''}</span><b>${crowdOf(m) == null ? '–' : pct(crowdOf(m))}</b></div>
+      <div class="olabel"><span class="on">${esc(m.group_title || m.question)}${m.outcome === 1 ? ' <span class="won">✓</span>' : ''}</span><span><b>${nowOf(m) == null ? '–' : pct(nowOf(m))}</b> <span class="crowd-tag">crowd</span></span></div>
       ${track(m, m.group_title || 'Yes')}</div>`;
   return `<article class="card" tabindex="0" data-id="${esc(items[0].id)}">
     <div class="ctop"><span class="cat">${esc(head.category || 'Other')}</span><span>${esc(whenLeft(head.end_date))}</span></div>
     <div class="ttl">${esc(g.title || items[0].question)}</div>
-    <div class="sub">${items.length} options · ${exclusive ? 'one winner' : 'each can happen'}</div>
+    <div class="sub">${items.length} options · each can happen · dots are AI models</div>
     <div class="orows">${items.slice(0, 3).map(row).join('')}</div>
     ${items.length > 3 ? `<div class="more-opts">+${items.length - 3} more options</div>` : ''}
   </article>`;
@@ -695,7 +712,7 @@ function eventCard(g) {
 function renderLegend() {
   const ai = [...new Set(allModels.filter(k => k !== 'market').map(baseOf))];
   document.getElementById('legend-bar').innerHTML =
-    `<span><span class="lfill"></span>Crowd: the Polymarket price</span>` +
+    `<span><b style="font-family:JetBrains Mono">97%</b>&nbsp;crowd = the live Polymarket price</span>` +
     ai.map(k => `<span><span class="tdot static" style="--c:${colorOf(k)}">${initialOf(k)}</span>${esc(k)}</span>`).join('') +
     `<span class="muted">AI models read fresh web search results, never the price</span>`;
 }
