@@ -15,7 +15,7 @@ Decision models forecast [Polymarket](https://polymarket.com) questions. Once ma
 | `market` | Baseline: echoes the current Polymarket price (the crowd) |
 | `coinflip` | Baseline: always 50% |
 | `openai` | Asks an OpenAI model (`OPENAI_MODEL`) for a probability, without showing it the price |
-| `typesafe` | Placeholder HTTP client for the Typesafe model: fill in `odds_arena/models/typesafe_model.py` |
+| `typesafe` | Asks TypeSafe's Jev one Noul question (P resolves Yes), without the price; set `TYPESAFE_API_KEY` |
 
 Add a model: subclass `DecisionModel` in `odds_arena/models/`, implement `predict(market) -> Prediction`, and register it in `odds_arena/models/__init__.py`.
 
