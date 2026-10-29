@@ -149,6 +149,16 @@
   .tdot.hit { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--yes); }
   .tdot.miss { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--no); }
   .tends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin: -4px 8px 0; }
+  .olegend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #3c4150; }
+  .olegend span { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; }
+  .olegend i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .donuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 8px; margin-top: auto; }
+  .dn { text-align: center; min-width: 0; border-radius: 10px; padding: 4px 2px 6px; }
+  .dn svg { width: 64px; height: 64px; display: block; margin: 0 auto; }
+  .dn .dname { font-size: 12px; font-weight: 600; margin-top: 2px; }
+  .dn .dpick { font-size: 11px; line-height: 1.25; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  .dn.hit { background: var(--yes-bg); } .dn.hit .dpick::after { content: " ✓"; color: var(--yes); }
+  .dn.miss { background: var(--no-bg); } .dn.miss .dpick::after { content: " ✗"; color: var(--no); }
   .olabel { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
   .olabel b { font-family: "JetBrains Mono", monospace; }
   .won { color: var(--yes); font-weight: 700; }
@@ -555,6 +565,25 @@ function eventPicks(items) {
 const isExclusive = items => items.some(m => m.kind === 'one_winner');  // kind comes from the server's rule
 
 const INITIALS = { openai: 'O', typesafe: 'T', perplexity: 'P' };
+// Colours for the options of a one-winner event (validated categorical palette); "Other" is grey.
+const OPT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+const OTHER_COLOR = '#c9ccd4';
+
+// Donut of one model's split across an event's options: segments in option order, the top share in the middle.
+function donut(shares) {
+  const r = 24, c = 2 * Math.PI * r, total = shares.reduce((t, x) => t + x.p, 0) || 1;
+  let at = 0;
+  const segs = shares.filter(x => x.p > 0).map(x => {
+    const len = x.p / total * c, gap = shares.length > 1 ? Math.min(1.5, len / 3) : 0;
+    const seg = `<circle r="${r}" cx="32" cy="32" fill="none" stroke="${x.color}" stroke-width="11"
+      stroke-dasharray="${Math.max(len - gap, 0.01)} ${c}" stroke-dashoffset="${-at}" transform="rotate(-90 32 32)"/>`;
+    at += len;
+    return seg;
+  }).join('');
+  const top = shares.reduce((a, b) => (b.p > a.p ? b : a), shares[0]);
+  return `<svg viewBox="0 0 64 64" aria-hidden="true"><circle r="${r}" cx="32" cy="32" fill="none" stroke="#f1ead8" stroke-width="11"/>${segs}
+    <text x="32" y="36.5" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="13" fill="#1f2430">${pct(top.p / total)}</text></svg>`;
+}
 const initialOf = k => INITIALS[baseOf(k)] || baseOf(k)[0].toUpperCase();
 function whenLeft(end) {
   if (!end) return '';
@@ -598,9 +627,35 @@ function matchupCard(m) {
   </article>`;
 }
 
+function donutCard(g, items) {
+  const head = items[0];
+  const top = items.slice(0, 3), rest = items.slice(3);
+  const opts = top.map((m, i) => ({ m, color: OPT_COLORS[i] }));
+  const winner = items.find(m => m.outcome === 1);
+  const who = ['market', ...[...new Set(items.flatMap(modelsOf))].sort()];
+  const chart = k => {
+    const share = m => (k === 'market' ? crowdOf(m) : m.predictions[k]?.p) ?? 0;
+    const shares = opts.map(o => ({ p: share(o.m), color: o.color, m: o.m }));
+    if (rest.length) shares.push({ p: rest.reduce((t, m) => t + share(m), 0), color: OTHER_COLOR, m: null });
+    if (!shares.some(x => x.p > 0)) return '';
+    const pick = items.reduce((a, b) => (share(b) > share(a) ? b : a));
+    const verdict = winner && k !== 'market' ? (pick.id === winner.id ? ' hit' : ' miss') : '';
+    const tip = shares.map(x => `${esc(x.m ? (x.m.group_title || x.m.question) : 'Other')}: ${pct(x.p)}`).join('<br>');
+    return `<div class="dn${verdict}" data-tip="<b>${k === 'market' ? 'crowd' : esc(k)}</b><br>${tip}">
+      ${donut(shares)}<div class="dname">${k === 'market' ? 'crowd' : esc(k)}</div><div class="dpick">${esc(pick.group_title || pick.question)}</div></div>`;
+  };
+  return `<article class="card" tabindex="0" data-id="${esc(head.id)}">
+    <div class="ctop"><span class="cat">${esc(head.category || 'Other')}</span><span>${esc(whenLeft(head.end_date))}</span></div>
+    <div class="ttl">${esc(g.title || head.question)}</div>
+    <div class="olegend">${opts.map(o => `<span><i style="background:${o.color}"></i>${esc(o.m.group_title || o.m.question)}</span>`).join('')}${rest.length ? `<span><i style="background:${OTHER_COLOR}"></i>${rest.length} other${rest.length > 1 ? 's' : ''}</span>` : ''}</div>
+    <div class="donuts">${who.map(chart).join('')}</div>
+  </article>`;
+}
+
 function eventCard(g) {
   const items = [...g.items].sort((x, y) => (crowdOf(y) ?? -1) - (crowdOf(x) ?? -1));
   const exclusive = isExclusive(items);
+  if (exclusive) return donutCard(g, items);  // shares add up to 100%: one donut per model
   const head = items.find(m => m.outcome !== null) || items[0];
   const row = m => `<div class="orow" data-id="${esc(m.id)}">
       <div class="olabel"><span class="on">${esc(m.group_title || m.question)}${m.outcome === 1 ? ' <span class="won">✓</span>' : ''}</span><b>${crowdOf(m) == null ? '–' : pct(crowdOf(m))}</b></div>
@@ -721,10 +776,9 @@ function renderDetail(d) {
       }).join('')}</tr></tfoot>` : '';
   // One-winner event: how each model splits 100% across the options, one stacked bar per model.
   // Options get their own colours (ordered by the crowd); models are named on each row, not coloured.
-  const OPT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
   const rankedOpts = [...opts].sort((a, b) => (b.predictions.market ?? -1) - (a.predictions.market ?? -1));
   const shownOptsN = Math.min(rankedOpts.length, OPT_COLORS.length - 1);  // the rest fold into "Other options"
-  const optColor = i => i < shownOptsN ? OPT_COLORS[i] : '#b4b8c2';
+  const optColor = i => i < shownOptsN ? OPT_COLORS[i] : OTHER_COLOR;
   const splitRows = exclusive && opts.length > 1 ? optModels.map(k => {
     const parts = rankedOpts.map((o, i) => ({ label: o.group_title || o.question, p: o.predictions[k] ?? 0, i }));
     const shown = parts.slice(0, shownOptsN), rest = parts.slice(shownOptsN).reduce((t, x) => t + x.p, 0);
