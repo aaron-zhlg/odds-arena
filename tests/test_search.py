@@ -162,3 +162,14 @@ def test_settled_looking_markets_are_skipped(monkeypatch):
         def json(self): return [raw("live", 0.6), raw("done", 0.995), raw("dead", 0.005)]
     monkeypatch.setattr(polymarket.httpx, "get", lambda *a, **k: R())
     assert [m.id for m in polymarket.fetch_open_markets(within_days=None)] == ["live"]
+
+
+def test_predict_moves_on_to_markets_that_still_need_predictions(monkeypatch, tmp_path):
+    monkeypatch.setattr(db, "DATABASE_URL", None)
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
+    ms = [Market(id=str(i), question=f"Q{i}?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5],
+                 end_date=None, closed=False, volume=1e5) for i in range(5)]
+    monkeypatch.setattr(jobs.polymarket, "fetch_open_markets", lambda **kw: ms)
+    monkeypatch.setattr(jobs, "load_models", lambda names: [Recorder("a", False)])
+    runs = [jobs.run_predict(limit=2, model_names=["x"], log=lambda s: None) for _ in range(3)]
+    assert [r["markets"] for r in runs] == [2, 2, 1] and sum(r["predictions"] for r in runs) == 5

@@ -417,7 +417,7 @@ function renderMarkets() {
   });
   const list = groups.slice(0, shown);
   const more = document.getElementById('more');
-  more.style.display = !LIST_PAGE && groups.length > shown ? '' : 'none';
+  more.style.display = LIST_PAGE ? 'none' : '';  // always offer the full list (with search), even when it all fits
   more.textContent = `View all ${groups.length} markets →`;
   if (LIST_PAGE) document.getElementById('markets-title').textContent = `All markets · ${groups.length}`;
   if (!list.length) { el.innerHTML = '<div class="empty">No markets here yet.</div>'; return; }

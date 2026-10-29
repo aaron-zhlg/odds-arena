@@ -21,19 +21,26 @@ def run_predict(limit: int = 20, model_names: list[str] | None = None, within_da
                 time_budget: float | None = None, log: Log = print) -> dict:
     deadline = time.monotonic() + time_budget if time_budget else None
     models = load_models(model_names or ENABLED_MODELS)
-    markets = polymarket.fetch_open_markets(limit=limit, within_days=within_days)
+    # Look past the top `limit` markets: ones every model already predicted are skipped, so each run
+    # works on up to `limit` markets that still need predictions instead of re-checking the same top ones.
+    markets = polymarket.fetch_open_markets(limit=100, within_days=within_days)
     log(f"Fetched {len(markets)} open markets")
-    made = failed = 0
+    made = failed = worked = 0
     timed_out = False
     with db.connect() as conn, ThreadPoolExecutor(max_workers=max(len(models), 1)) as pool:
         for m in markets:
+            if worked >= limit:
+                break
             if deadline and time.monotonic() > deadline:
                 timed_out = True
                 log("Time budget reached; the next run continues from here")
                 break
+            done = {r["model"] for r in conn.execute("SELECT model FROM predictions WHERE market_id = ?", (m.id,)).fetchall()}
+            todo = [model for model in models if model.name not in done]
+            if not todo:
+                continue
+            worked += 1
             _save_market(conn, m)
-            todo = [model for model in models
-                    if not conn.execute("SELECT 1 FROM predictions WHERE market_id=? AND model=?", (m.id, model.name)).fetchone()]
             context = None  # fetched at most once per market, shared by all search models
             if any(model.uses_search for model in todo):
                 try:
@@ -58,7 +65,7 @@ def run_predict(limit: int = 20, model_names: list[str] | None = None, within_da
                 made += 1
                 log(f"  [{model.name}] {pred.probability:.2f}  {m.question[:70]}")
             conn.commit()
-    return {"markets": len(markets), "predictions": made, "failed": failed, "timed_out": timed_out}
+    return {"markets": worked, "predictions": made, "failed": failed, "timed_out": timed_out}
 
 
 def _save_market(conn, m) -> None:
