@@ -110,40 +110,70 @@
   .chip { cursor: pointer; border: 1px solid var(--line-strong); background: var(--card); color: var(--muted); padding: 6px 14px; border-radius: 99px; font: inherit; font-size: 13px; transition: all .2s; }
   .chip:hover { color: var(--text); }
   .chip.on { color: #5a3a00; background: var(--sun-soft); border-color: var(--sun); font-weight: 500; }
-  .mtable { width: 100%; border-collapse: separate; border-spacing: 0; }
-  .mtable th, .mtable td { padding: 12px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  .mtable tbody tr:last-child td { border-bottom: 0; }
-  .mtable th { position: sticky; top: 0; background: #fbf8f1; z-index: 1; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text); font-weight: 600; text-align: center; }
-  .mtable th .swatch { margin-right: 6px; vertical-align: -1px; }
-  .mtable th .sub { display: block; font-size: 10px; color: var(--muted); font-weight: 400; margin-top: 2px; }
-  .mtable th.ref { color: var(--muted); font-weight: 500; }
-  .mtable th.qh, .mtable td.qcell { text-align: left; position: sticky; left: 0; background: var(--card); z-index: 2; white-space: normal; min-width: 280px; max-width: 380px; padding-left: 18px; box-shadow: 1px 0 0 var(--line); }
-  .mtable th.qh { z-index: 3; background: #fbf8f1; color: var(--muted); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; font-weight: 500; }
-  .mtable tr.market { cursor: pointer; }
-  .mtable tr.market:hover td { background-color: #fffbef; }
-  .mtable tr.market:hover td.qcell { background-color: #fff6dc; }
-  .mtable tr.market:focus-visible td.qcell { box-shadow: inset 3px 0 0 var(--sun), 1px 0 0 var(--line); }
-  .mtable .q { font-weight: 500; line-height: 1.35; }
-  .mtable tr.event td { background: #fbf6e8; font-weight: 600; font-size: 13px; padding-top: 10px; padding-bottom: 10px; }
-  .mtable tr.event td.qcell { background: #fbf6e8; }
-  .mtable tr.event .n { color: var(--muted); font-weight: 400; margin-left: 6px; }
-  .mtable tr.child td.qcell { padding-left: 34px; }
-  .mtable tr.child .q::before { content: "↳ "; color: var(--muted); }
+  /* Market cards: the form follows the question type */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; box-shadow: var(--shadow);
+          display: flex; flex-direction: column; gap: 12px; cursor: pointer; transition: border-color .15s, transform .15s; min-width: 0; }
+  .card:hover { border-color: var(--sun); transform: translateY(-2px); }
+  .card:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
+  .card .top { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+  .card .kind { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .card .ttl { font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .gauge { flex: none; text-align: center; width: 72px; }
+  .gauge svg { display: block; width: 72px; height: 42px; }
+  .gauge .lbl { font-size: 10px; color: var(--muted); margin-top: -2px; letter-spacing: .06em; text-transform: uppercase; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 99px; padding: 3px 10px; font-size: 12px; background: #fff; white-space: nowrap; max-width: 100%; }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+  .pill b { font-family: "JetBrains Mono", monospace; }
+  .pill .pick { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  .pill.hit { background: var(--yes-bg); border-color: rgba(21,128,61,.3); } .pill.hit::after { content: "✓"; color: var(--yes); font-weight: 700; }
+  .pill.miss { background: var(--no-bg); border-color: rgba(198,40,40,.3); } .pill.miss::after { content: "✗"; color: var(--no); font-weight: 700; }
+  .pills-label { font-size: 11px; color: var(--muted); margin-bottom: -6px; }
+  .teams { display: grid; gap: 6px; }
+  .team { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--soft); font-weight: 600; }
+  .team span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .team b { font-family: "JetBrains Mono", monospace; font-size: 15px; }
+  .team.won { background: var(--yes-bg); box-shadow: inset 0 0 0 1px rgba(21,128,61,.3); }
+  .orows { display: grid; }
+  .orow { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; padding: 7px 4px; border-top: 1px solid var(--line); border-radius: 6px; }
+  .orow:first-child { border-top: 0; }
+  .orow:hover { background: #fffbef; }
+  .orow .on { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .orow .cr { font-family: "JetBrains Mono", monospace; font-weight: 700; }
+  .orow .mr { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+  .orow.won .on::after { content: " ✓"; color: var(--yes); }
+  .card .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+  .card .foot .badge { display: inline-block; width: auto; padding: 2px 8px; font-size: 10px; letter-spacing: .04em; }
+  .more-opts { font-size: 12px; color: var(--muted); padding: 4px; }
+
+  /* Detail: model calls as a dot plot on one shared axis */
+  .dplot { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px 6px; background: #fffdf8; }
+  .daxis { display: grid; grid-template-columns: 130px 1fr 52px; gap: 12px; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .daxis .ends { display: flex; justify-content: space-between; }
+  .drow { display: grid; grid-template-columns: 130px 1fr 52px; gap: 4px 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+  .drow .dn { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drow .dn .swatch { margin-right: 6px; }
+  .dtrack { position: relative; height: 18px; }
+  .dtrack::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--soft); border-radius: 2px; }
+  .dtrack .mid { position: absolute; left: 50%; top: 3px; width: 1px; height: 12px; background: var(--line-strong); }
+  .dtrack .crowd { position: absolute; top: 0; width: 2px; height: 18px; margin-left: -1px; background: #3c4150; opacity: .35; border-radius: 2px; }
+  .dtrack .dot { position: absolute; top: 2px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--c); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(31,36,48,.15); }
+  .drow .dv { text-align: right; font-family: "JetBrains Mono", monospace; font-weight: 700; }
+  .drow .why { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+  .drow.crowdrow .dn { color: var(--muted); }
+  .dkey { font-size: 11px; color: var(--muted); margin: 6px 0 2px; }
+  .dkey i { display: inline-block; width: 2px; height: 10px; background: #3c4150; opacity: .35; vertical-align: -1px; margin-right: 4px; }
+  .otable { border: 1px solid var(--line); border-radius: 14px; overflow-x: auto; }
+  .otable table th, .otable table td { padding: 8px 10px; font-size: 13px; text-align: right; }
+  .otable table th:first-child, .otable table td:first-child { text-align: left; white-space: normal; }
+  .otable tr.me td { background: var(--sun-soft); font-weight: 600; }
+  .otable a { color: inherit; text-decoration: none; }
   .opt-note { color: #7a5200; background: var(--sun-soft); border-radius: 6px; padding: 1px 6px; font-size: 11px; }
   .siblings { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .siblings a { font-size: 12px; text-decoration: none; color: var(--text); border: 1px solid var(--line-strong); border-radius: 99px; padding: 3px 10px; background: var(--card); }
   .siblings a:hover { border-color: var(--sun); background: var(--sun-soft); }
   .event-line { color: var(--muted); font-size: 13px; margin: -4px 0 8px; }
-  .mtable .meta { color: var(--muted); font-size: 12px; margin-top: 4px; display: flex; gap: 8px; align-items: center; }
-  .mtable .meta .badge { display: inline-block; width: auto; padding: 2px 7px; font-size: 10px; letter-spacing: .04em; }
-  .cell { text-align: center; min-width: 72px; }
-  .cell .v { font-family: "JetBrains Mono", monospace; font-weight: 600; font-size: 14px; }
-  .cell .mini { height: 4px; margin: 6px auto 0; width: 48px; border-radius: 99px; background: var(--soft); overflow: hidden; }
-  .cell .mini i { display: block; height: 100%; background: var(--c); border-radius: 99px; }
-  .cell.hit { background: var(--yes-bg); } .cell.hit .v::after { content: " ✓"; color: var(--yes); font-size: 12px; }
-  .cell.miss { background: var(--no-bg); } .cell.miss .v::after { content: " ✗"; color: var(--no); font-size: 12px; }
-  .cell.none { color: var(--muted); }
-  .cell.ref .v { color: var(--muted); }
 
   /* Market detail drawer */
   .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(60,45,10,.22); backdrop-filter: blur(3px); opacity: 0; pointer-events: none; transition: opacity .2s; }
@@ -208,7 +238,8 @@
     .podium { grid-template-columns: 1fr; }
     .step.p1 { order: -1; }
     .grid2 { grid-template-columns: 1fr; }
-    .mtable th.qh, .mtable td.qcell { min-width: 190px; max-width: 220px; padding-left: 14px; }
+    .cards { grid-template-columns: 1fr; }
+    .daxis, .drow { grid-template-columns: 96px 1fr 44px; gap: 4px 8px; }
     .drawer-inner { padding: 22px 16px 48px; }
     .pred { grid-template-columns: 130px 1fr 56px; }
   }
@@ -233,9 +264,9 @@
   <nav class="crumb" id="crumb" hidden><a href="/">← Odds Arena</a></nav>
   <section id="markets-section">
     <h2 id="markets-title">Markets</h2>
-    <p class="section-note">Every number is a model's probability for the question's first option: <b>Yes</b> for yes/no questions (73% means "73% likely Yes, 27% likely No"), or the named option shown under the question, such as a team. Questions that belong to one multi-option event (e.g. "Which party wins the House?") are grouped under it, one row per option. The tag under each question is the real outcome once Polymarket settles it. After that, <b style="color:var(--yes)">✓</b> / <b style="color:var(--no)">✗</b> show whether each model leaned the right way (above or below 50%). <span class="mono">market</span> is the Polymarket price when the models predicted: the crowd to beat. Click a row for details.</p>
+    <p class="section-note">Each card is one Polymarket question, drawn for its type: a yes/no question shows the crowd's chance on a gauge, a matchup shows both sides, and a multi-option event lists its options. Pills are each model's call with its name; once Polymarket settles the question, ✓ / ✗ mark whether the model leaned the right way. <b>Crowd</b> is the Polymarket price when the models made their calls. Click a card for the full comparison.</p>
     <div class="toolbar"><div class="filters" id="filters"></div><input id="search" class="search" type="search" placeholder="Search questions, options, events" hidden></div>
-    <div class="panel" id="markets"></div>
+    <div class="cards" id="markets"></div>
     <a class="chip more" id="more" href="/markets">View all markets →</a>
   </section>
 
@@ -388,7 +419,7 @@ function renderCalibration(markets, models) {
 
 // "/markets" is the full list; the home page shows the latest few groups and links there.
 const LIST_PAGE = location.pathname.replace(/\/+$/, '') === '/markets';
-const HOME_GROUPS = 10;
+const HOME_GROUPS = 9;
 let allMarkets = [], allModels = [], filter = 'all', query = '';
 const shown = LIST_PAGE ? Infinity : HOME_GROUPS;
 const MODEL_INFO = {
@@ -403,12 +434,70 @@ const statusTag = (m, tag = 'span') => m.outcome === null || m.outcome === undef
   ? `<${tag} class="badge open">Open</${tag}>`
   : `<${tag} class="badge ${m.outcome ? 'yes' : 'no'}">Resolved: ${esc(winner(m))}</${tag}>`;
 
+const crowdOf = m => m.predictions.market ? m.predictions.market.p : null;
+const modelsOf = m => allModels.filter(k => k !== 'market' && m.predictions[k]);
+// Right/wrong only once settled; exactly 50% picks no side.
+const sideClass = (p, outcome) => outcome === null || outcome === undefined || p === 0.5 ? '' : ((p > 0.5 ? 1 : 0) === outcome ? ' hit' : ' miss');
+
+function gauge(p) {
+  // Half-circle gauge for the crowd's chance of the first option.
+  const r = 28, cx = 36, cy = 36, a = Math.PI * (1 - (p ?? 0));
+  const end = [cx + r * Math.cos(a), cy - r * Math.sin(a)];
+  const arc = p == null ? '' : `<path d="M${cx - r},${cy} A${r},${r} 0 0 1 ${end[0].toFixed(1)},${end[1].toFixed(1)}" fill="none" stroke="#f0a400" stroke-width="7" stroke-linecap="round"/>`;
+  return `<div class="gauge"><svg viewBox="0 0 72 42" aria-hidden="true"><path d="M${cx - r},${cy} A${r},${r} 0 0 1 ${cx + r},${cy}" fill="none" stroke="#f1ead8" stroke-width="7" stroke-linecap="round"/>${arc}
+    <text x="36" y="34" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="#1f2430">${p == null ? '–' : pct(p)}</text></svg><div class="lbl">crowd</div></div>`;
+}
+
+const pill = (k, text, cls = '') => `<span class="pill${cls}" style="--c:${colorOf(k)}" title="${esc(MODEL_INFO[k] || k)}"><i></i>${esc(k)} ${text}</span>`;
+
+function yesNoCard(m) {
+  const ms = modelsOf(m);
+  return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
+    <div class="top"><div><div class="kind">Yes / No</div><div class="ttl">${esc(m.question)}</div></div>${m.outcome === null ? gauge(crowdOf(m)) : ''}</div>
+    ${ms.length ? `<div class="pills-label">Model calls · chance of Yes</div><div class="pills">${ms.map(k => pill(k, `<b>${pct(m.predictions[k].p)}</b>`, sideClass(m.predictions[k].p, m.outcome))).join('')}</div>` : '<div class="pills-label">No model calls yet</div>'}
+    <div class="foot">${statusTag(m)}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div>
+  </article>`;
+}
+
+function matchupCard(m) {
+  const [a, b] = m.outcomes, c = crowdOf(m), ms = modelsOf(m);
+  const team = (name, p, i) => `<div class="team${m.outcome !== null && (m.outcome ? 0 : 1) === i ? ' won' : ''}"><span>${esc(name)}</span><b>${p == null ? '–' : pct(p)}</b></div>`;
+  return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
+    <div><div class="kind">${esc(a)} vs ${esc(b)}</div><div class="ttl">${esc(m.question)}</div></div>
+    <div class="teams">${team(a, c, 0)}${team(b, c == null ? null : 1 - c, 1)}</div>
+    ${ms.length ? `<div class="pills-label">Model picks (crowd shown above)</div><div class="pills">${ms.map(k => {
+      const p = m.predictions[k].p, pick = p >= 0.5 ? a : b;
+      return pill(k, `<span class="pick">→ ${esc(pick)}</span> <b>${pct(Math.max(p, 1 - p))}</b>`, sideClass(p, m.outcome));
+    }).join('')}</div>` : '<div class="pills-label">No model calls yet</div>'}
+    <div class="foot">${statusTag(m)}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div>
+  </article>`;
+}
+
+function eventCard(g) {
+  const items = [...g.items].sort((x, y) => (crowdOf(y) ?? -1) - (crowdOf(x) ?? -1));
+  const shownOpts = items.slice(0, 4);
+  const row = m => {
+    const vals = modelsOf(m).map(k => m.predictions[k].p);
+    const range = !vals.length ? 'no model calls yet'
+      : vals.length === 1 ? `${modelsOf(m)[0]} ${pct(vals[0])}`
+      : `models ${pct(Math.min(...vals))}–${pct(Math.max(...vals))}`;
+    return `<div class="orow${m.outcome === 1 ? ' won' : ''}" data-id="${esc(m.id)}" title="${modelsOf(m).map(k => `${k}: ${pct(m.predictions[k].p)}`).join(' · ')}">
+      <span class="on">${esc(m.group_title || m.question)}</span><span class="cr">${crowdOf(m) == null ? '–' : pct(crowdOf(m))}</span><span class="mr">${range}</span></div>`;
+  };
+  const settled = items.filter(m => m.outcome !== null).length;
+  return `<article class="card" tabindex="0" data-id="${esc(items[0].id)}">
+    <div><div class="kind">${items.length} options · crowd chance</div><div class="ttl">${esc(g.title || items[0].question)}</div></div>
+    <div class="orows">${shownOpts.map(row).join('')}${items.length > 4 ? `<div class="more-opts">+${items.length - 4} more options</div>` : ''}</div>
+    <div class="foot"><span>${settled ? `${settled}/${items.length} settled` : '<span class="badge open">Open</span>'}</span><span class="mono">${items[0].end_date ? 'closes ' + esc(items[0].end_date.slice(0, 10)) : ''}</span></div>
+  </article>`;
+}
+
 function renderMarkets() {
   const el = document.getElementById('markets');
   const q = query.trim().toLowerCase();
   const all = allMarkets.filter(m => (filter === 'all' || (filter === 'open' ? m.outcome === null : m.outcome !== null))
     && (!q || [m.question, m.group_title, m.event_title, ...(m.outcomes || [])].some(t => (t || '').toLowerCase().includes(q))));
-  // Group options of one multi-option event; a market alone in its event stays a plain row.
+  // Options of one multi-option event share a card; a market alone in its event gets its own card.
   const groups = [], byEvent = {};
   all.forEach(m => {
     const key = m.event_id && all.filter(x => x.event_id === m.event_id).length > 1 ? 'e' + m.event_id : 'm' + m.id;
@@ -421,26 +510,7 @@ function renderMarkets() {
   more.textContent = `View all ${groups.length} markets →`;
   if (LIST_PAGE) document.getElementById('markets-title').textContent = `All markets · ${groups.length}`;
   if (!list.length) { el.innerHTML = '<div class="empty">No markets here yet.</div>'; return; }
-  const head = `<thead><tr><th class="qh">Question · result</th>${allModels.map(k =>
-    `<th class="${ref(k) ? 'ref' : ''}" title="${esc(MODEL_INFO[k] || k)}"><span class="swatch" style="--c:${colorOf(k)}"></span>${esc(k)}<span class="sub">% chance</span></th>`).join('')}</tr></thead>`;
-  const row = (m, child) => {
-    const cells = allModels.map(k => {
-      const p = m.predictions[k];
-      if (!p) return '<td class="cell none">–</td>';
-      // Exactly 50% picks no side, so it is neither right nor wrong.
-      const side = m.outcome === null || p.p === 0.5 ? '' : ((p.p > 0.5 ? 1 : 0) === m.outcome ? ' hit' : ' miss');
-      return `<td class="cell${side}${ref(k) ? ' ref' : ''}" style="--c:${colorOf(k)}" title="${esc(k)}: ${pct(p.p)} ${esc(firstOpt(m))}${p.rationale ? ' · ' + esc(p.rationale) : ''}">
-        <div class="v">${pct(p.p)}</div><div class="mini"><i style="width:${p.p * 100}%"></i></div></td>`;
-    }).join('');
-    const label = child && m.group_title ? m.group_title : m.question;
-    const opt = isYesNo(m) ? '' : `<span class="opt-note">% = chance of ${esc(firstOpt(m))}</span>`;
-    return `<tr class="market${child ? ' child' : ''}" tabindex="0" data-id="${esc(m.id)}">
-      <td class="qcell"><div class="q">${esc(label)}</div><div class="meta">${statusTag(m)}${opt}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div></td>${cells}</tr>`;
-  };
-  const rows = list.map(g => g.items.length > 1
-    ? `<tr class="event"><td class="qcell" colspan="1">${esc(g.title || 'Event')}<span class="n">${g.items.length} options</span></td><td colspan="${allModels.length}"></td></tr>` + g.items.map(m => row(m, true)).join('')
-    : row(g.items[0], false)).join('');
-  el.innerHTML = `<table class="mtable">${head}<tbody>${rows}</tbody></table>`;
+  el.innerHTML = list.map(g => g.items.length > 1 ? eventCard(g) : isYesNo(g.items[0]) ? yesNoCard(g.items[0]) : matchupCard(g.items[0])).join('');
 }
 
 // ---- Market detail: opened via #market/<id>, so links are shareable and Back closes it ----
@@ -467,20 +537,40 @@ function renderDetail(d) {
         <ul>${(s.snippets || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
       </div>`).join('') : '<p class="src-meta">The search returned no usable sources.</p>');
 
-  const preds = d.predictions.length ? d.predictions.map(p => {
-    const c = colorOf(p.model);
-    const called = p.probability > 0.5 ? 1 : 0;
-    const verdict = !resolved ? ''
-      : p.probability === 0.5 ? `<span class="verdict">no side · Brier ${p.brier.toFixed(3)}</span>`
-      : `<span class="verdict ${called === d.outcome ? 'hit' : 'miss'}">${called === d.outcome ? '✓ right side' : '✗ wrong side'} · Brier ${p.brier.toFixed(3)}</span>`;
-    const price = p.market_price != null ? ` · market was ${pct(p.market_price)} then` : '';
-    return `<div class="pred" style="--c:${c}">
-      <div><span class="swatch"></span><b>${esc(p.model)}</b></div>
-      <div class="bar"><i style="width:${p.probability * 100}%"></i></div>
-      <div class="p mono">${pct(p.probability)}</div>
-      <div class="why">${p.rationale ? esc(p.rationale) : ''}<span class="mono" style="font-size:12px">${price}</span>${verdict}</div>
-    </div>`;
-  }).join('') : '<p class="src-meta">No predictions yet.</p>';
+  // Every model on one shared 0-100% axis (P of the first option), the crowd as a reference line.
+  const crowd = (d.predictions.find(p => p.model === 'market') || {}).probability;
+  const [o0, o1] = d.outcomes;
+  const ends = isYesNo(d) ? ['No · 0%', '100% · Yes'] : [`← ${o1}`, `${o0} →`];
+  const ordered = [...d.predictions].sort((a, b) => (a.model === 'market' ? -1 : b.model === 'market' ? 1 : b.probability - a.probability));
+  const preds = d.predictions.length ? `<div class="dplot">
+    <div class="daxis"><span></span><div class="ends"><span>${esc(ends[0])}</span><span>50%</span><span>${esc(ends[1])}</span></div><span></span></div>
+    ${ordered.map(p => {
+      const isCrowd = p.model === 'market';
+      const called = p.probability > 0.5 ? 1 : 0;
+      const verdict = !resolved || isCrowd ? ''
+        : p.probability === 0.5 ? ` <span class="verdict">no side · Brier ${p.brier.toFixed(3)}</span>`
+        : ` <span class="verdict ${called === d.outcome ? 'hit' : 'miss'}">${called === d.outcome ? '✓ right side' : '✗ wrong side'} · Brier ${p.brier.toFixed(3)}</span>`;
+      const label = isYesNo(d) ? '' : ` <span style="color:var(--muted)">→ ${esc(p.probability >= 0.5 ? o0 : o1)}</span>`;
+      return `<div class="drow${isCrowd ? ' crowdrow' : ''}" style="--c:${colorOf(p.model)}">
+        <div class="dn"><span class="swatch"></span>${isCrowd ? 'crowd' : esc(p.model)}</div>
+        <div class="dtrack"><span class="mid"></span>${crowd != null && !isCrowd ? `<span class="crowd" style="left:${crowd * 100}%"></span>` : ''}<span class="dot" style="left:${p.probability * 100}%"></span></div>
+        <div class="dv">${pct(p.probability)}</div>
+        ${(p.rationale && !isCrowd) || verdict || label ? `<div class="why">${p.rationale && !isCrowd ? esc(p.rationale) : ''}${label}${verdict}</div>` : ''}
+      </div>`;
+    }).join('')}
+    ${crowd != null ? `<div class="dkey"><i></i>crowd at prediction time (${pct(crowd)})</div>` : ''}
+  </div>` : '<p class="src-meta">No predictions yet.</p>';
+
+  // A multi-option event: every option against every model, this option highlighted.
+  const opts = (d.siblings || []).length ? [{ id: d.id, group_title: d.group_title, question: d.question, outcome: d.outcome,
+      predictions: Object.fromEntries(d.predictions.map(p => [p.model, p.probability])) }, ...d.siblings] : [];
+  const optModels = [...new Set(opts.flatMap(o => Object.keys(o.predictions)))].filter(k => k !== 'coinflip')
+    .sort((a, b) => (a === 'market' ? -1 : b === 'market' ? 1 : a.localeCompare(b)));
+  const optTable = opts.length ? `<h4>All options in this event · chance of each</h4><div class="otable"><table>
+    <thead><tr><th>Option</th>${optModels.map(k => `<th><span class="swatch" style="--c:${colorOf(k)}"></span>${k === 'market' ? 'crowd' : esc(k)}</th>`).join('')}</tr></thead>
+    <tbody>${opts.sort((a, b) => (b.predictions.market ?? -1) - (a.predictions.market ?? -1)).map(o => `<tr class="${o.id === d.id ? 'me' : ''}">
+      <td><a href="#market/${encodeURIComponent(o.id)}">${esc(o.group_title || o.question)}</a>${o.outcome === 1 ? ' <span style="color:var(--yes)">✓ won</span>' : ''}</td>
+      ${optModels.map(k => `<td class="mono">${o.predictions[k] == null ? '–' : pct(o.predictions[k])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '';
 
   return `<button class="close" aria-label="Close" onclick="closeDetail()">×</button>
     ${badgeFor(d).replace('class="badge', 'style="display:inline-block;width:auto;padding:5px 10px" class="badge')}
@@ -488,14 +578,14 @@ function renderDetail(d) {
     ${d.event_title && (d.siblings || []).length ? `<div class="event-line">Option <b>${esc(d.group_title || '')}</b> of <b>${esc(d.event_title)}</b></div>` : ''}
     <div class="facts">${facts}</div>
     ${d.description ? `<details><summary>Resolution rules</summary><p>${esc(d.description)}</p></details>` : ''}
-    ${(d.siblings || []).length ? `<div class="siblings">${d.siblings.map(x => `<a href="#market/${encodeURIComponent(x.id)}">${esc(x.group_title || x.question)}</a>`).join('')}</div>` : ''}
     ${isYesNo(d) ? '' : `<p class="src-meta" style="margin-top:12px">Outcomes: <b>${esc(d.outcomes[0])}</b> vs <b>${esc(d.outcomes[1])}</b>. Every percentage below is the chance of <b>${esc(d.outcomes[0])}</b>.</p>`}
     <div class="pc-head"><h4>Market price · P(${esc(firstOpt(d))})</h4><div class="ranges" id="ranges">${RANGES.map(([k, l]) =>
       `<button data-r="${k}" class="${k === chartRange ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <div class="pc" id="pc"><div class="loading" style="padding:60px 0;text-align:center">Loading price history…</div></div>
     <div class="pc-note" id="pc-note"></div>
     <h4>Search results sent to the models</h4>${search}
-    <h4>Model predictions · P(${esc(firstOpt(d))})</h4>${preds}
+    <h4>Model calls · chance of ${esc(firstOpt(d))}</h4>${preds}
+    ${optTable}
     <h4>Actual result</h4>
     <div class="result-card">${badgeFor(d)}<span style="color:var(--muted)">${resolved ? `Polymarket settled it as <b>${esc(winner(d))}</b> on ${esc((d.resolved_at || '').slice(0, 10))}` : 'Not resolved yet. Scores appear here once Polymarket settles it.'}</span></div>`;
 }
@@ -628,10 +718,11 @@ window.addEventListener('hashchange', route);
 document.getElementById('overlay').addEventListener('click', closeDetail);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('drawer').classList.contains('open')) closeDetail(); });
 document.getElementById('markets').addEventListener('click', e => {
-  const row = e.target.closest('.market'); if (row) location.hash = `market/${encodeURIComponent(row.dataset.id)}`;
+  const hit = e.target.closest('.orow') || e.target.closest('.card');  // an event's option row opens that option
+  if (hit) location.hash = `market/${encodeURIComponent(hit.dataset.id)}`;
 });
 document.getElementById('markets').addEventListener('keydown', e => {
-  const row = e.target.closest('.market'); if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); row.click(); }
+  const card = e.target.closest('.card'); if (card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); card.click(); }
 });
 
 function renderFilters() {

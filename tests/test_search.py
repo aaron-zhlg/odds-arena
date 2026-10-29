@@ -51,7 +51,7 @@ def test_one_search_per_market_shared_by_all_search_models(monkeypatch, tmp_path
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
     markets = [Market(id=str(i), question=f"Q{i}?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5],
                       end_date=None, closed=False, volume=1e5) for i in range(2)]
-    monkeypatch.setattr(jobs.polymarket, "fetch_open_markets", lambda **kw: markets)
+    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: markets)
     calls = []
     monkeypatch.setattr(jobs.search, "search_context", lambda q: calls.append(q) or [{"source": q}])
     models = [Recorder("a", False), Recorder("b+search", True), Recorder("c+search", True)]
@@ -68,7 +68,7 @@ def test_search_failure_skips_search_models_only(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "DATABASE_URL", None)
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
     m = Market(id="1", question="Q?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5], end_date=None, closed=False, volume=1e5)
-    monkeypatch.setattr(jobs.polymarket, "fetch_open_markets", lambda **kw: [m])
+    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: [m])
 
     def boom(q):
         raise RuntimeError("brave down")
@@ -89,7 +89,7 @@ def test_stored_search_is_reused_and_served(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
     m = Market(id="7", question="Q7?", description="Resolves Yes if X.", outcomes=["Yes", "No"], prices=[0.3, 0.7],
                end_date="2026-11-04T00:00:00Z", closed=False, volume=1e5, slug="q7")
-    monkeypatch.setattr(jobs.polymarket, "fetch_open_markets", lambda **kw: [m])
+    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: [m])
     calls = []
     monkeypatch.setattr(jobs.search, "search_context", lambda q: calls.append(q) or [{"source": "a.com", "snippets": ["x"]}])
 
@@ -111,24 +111,38 @@ def test_stored_search_is_reused_and_served(monkeypatch, tmp_path):
     assert c.get("/api/markets/nope").status_code == 404
 
 
-def test_history_endpoint_caches_and_validates(monkeypatch):
+def test_resolve_stores_prices_and_history_reads_the_db(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
-    from odds_arena.web import app as web
+    from odds_arena.web.app import app
 
-    web._history_cache.clear(); web._token_cache.clear()
+    monkeypatch.setattr(db, "DATABASE_URL", None)
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
+    with db.connect() as conn:
+        conn.execute("INSERT INTO markets (id, question) VALUES ('9', 'Q?')")
+    live = Market(id="9", question="Q?", description="", outcomes=["Yes", "No"], prices=[0.6, 0.4], end_date=None,
+                  closed=False, volume=1e5, first_token="tok")
+    monkeypatch.setattr(jobs.polymarket, "fetch_market", lambda mid: live)
     calls = []
-    monkeypatch.setattr(web.polymarket, "fetch_yes_token", lambda mid: calls.append(("token", mid)) or "tok")
-    monkeypatch.setattr(web.polymarket, "fetch_price_history",
-                        lambda tok, r: calls.append(("hist", tok, r)) or [(1, 0.4), (2, 0.6)])
-    c = TestClient(web.app)
-    assert c.get("/api/markets/9/history?range=1d").json() == {"range": "1d", "points": [[1, 0.4], [2, 0.6]]}
-    c.get("/api/markets/9/history?range=1d")
-    c.get("/api/markets/9/history?range=1m")
-    assert calls == [("token", "9"), ("hist", "tok", "1d"), ("hist", "tok", "1m")]  # cached, token reused
-    assert c.get("/api/markets/9/history?range=5y").status_code == 400
+    day = 86400
 
-    monkeypatch.setattr(web.polymarket, "fetch_yes_token", lambda mid: (_ for _ in ()).throw(RuntimeError("404")))
-    assert c.get("/api/markets/nope/history").status_code == 502
+    def hist(tok, rng="1w", since=None):
+        calls.append(rng if since is None else since)
+        if since is not None:
+            return [(since + 3599, 0.7)]
+        return [(0, 0.2), (10 * day, 0.4)] if rng == "all" else [(10 * day, 0.4), (10 * day + 3600, 0.6)]
+
+    monkeypatch.setattr(jobs.polymarket, "fetch_price_history", hist)
+    assert jobs.run_resolve(log=lambda s: None)["prices"] == 4
+    assert jobs.run_resolve(log=lambda s: None)["prices"] == 1
+    # full history only the first time; then only points after the latest stored one
+    assert calls == ["all", "1w", 10 * day + 3601]
+
+    c = TestClient(app)
+    after = 10 * day + 3600 + 3600
+    assert c.get("/api/markets/9/history?range=all").json()["points"] == [[0, 0.2], [10 * day, 0.4], [10 * day + 3600, 0.6], [after, 0.7]]
+    assert c.get("/api/markets/9/history?range=1d").json()["points"] == [[10 * day, 0.4], [10 * day + 3600, 0.6], [after, 0.7]]
+    assert c.get("/api/markets/none/history").json()["points"] == []
+    assert c.get("/api/markets/9/history?range=5y").status_code == 400
 
 
 def test_markets_api_returns_outcomes_events_and_siblings(monkeypatch, tmp_path):
@@ -140,7 +154,7 @@ def test_markets_api_returns_outcomes_events_and_siblings(monkeypatch, tmp_path)
     mk = lambda i, outcomes, ev, grp, price=0.5: Market(id=i, question=f"Q{i}?", description="", outcomes=outcomes, prices=[price, 1 - price],
                                          end_date=None, closed=False, volume=1e5, event_id=ev, event_title="Which party?" if ev else None, group_title=grp)
     markets = [mk("d", ["Yes", "No"], "e1", "Democrats"), mk("r", ["Yes", "No"], "e1", "Republicans"), mk("g", ["Lakers", "Celtics"], None, None)]
-    monkeypatch.setattr(jobs.polymarket, "fetch_open_markets", lambda **kw: markets)
+    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: markets)
     monkeypatch.setattr(jobs, "load_models", lambda names: [Recorder("a", False)])
     jobs.run_predict(model_names=["x"], log=lambda s: None)
     with db.connect() as conn:  # a row from before the outcomes column existed
@@ -169,7 +183,31 @@ def test_predict_moves_on_to_markets_that_still_need_predictions(monkeypatch, tm
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
     ms = [Market(id=str(i), question=f"Q{i}?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5],
                  end_date=None, closed=False, volume=1e5) for i in range(5)]
-    monkeypatch.setattr(jobs.polymarket, "fetch_open_markets", lambda **kw: ms)
+    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: ms)
     monkeypatch.setattr(jobs, "load_models", lambda names: [Recorder("a", False)])
     runs = [jobs.run_predict(limit=2, model_names=["x"], log=lambda s: None) for _ in range(3)]
     assert [r["markets"] for r in runs] == [2, 2, 1] and sum(r["predictions"] for r in runs) == 5
+
+
+def test_iter_open_markets_pages_lazily_and_stops(monkeypatch):
+    from odds_arena import polymarket
+    raw = lambda i: {"id": i, "question": "Q", "outcomes": '["Yes", "No"]', "outcomePrices": '["0.5", "0.5"]', "volume": "1e6"}
+    offsets = []
+
+    class R:
+        def __init__(self, off): self.off = off
+        def raise_for_status(self): pass
+        def json(self):  # 2.5 pages of markets in total
+            n = {0: 100, 100: 100, 200: 50}.get(self.off, 0)
+            return [raw(f"{self.off + i}") for i in range(n)]
+
+    def fake_get(url, params, timeout):
+        offsets.append(params["offset"]); return R(params["offset"])
+
+    monkeypatch.setattr(polymarket.httpx, "get", fake_get)
+    it = polymarket.iter_open_markets(within_days=None)
+    first = [next(it) for _ in range(101)]           # needs page 2 only once page 1 runs out
+    assert offsets == [0, 100] and first[-1].id == "100"
+    assert len(first) + len(list(it)) == 250 and offsets == [0, 100, 200]  # stops after the short last page
+    offsets.clear()
+    assert len(list(polymarket.iter_open_markets(within_days=None, max_pages=1))) == 100 and offsets == [0]

@@ -36,6 +36,12 @@ CREATE TABLE IF NOT EXISTS search_contexts (
     results TEXT NOT NULL,      -- JSON list exactly as sent to the +search models
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS price_points (
+    market_id TEXT NOT NULL REFERENCES markets(id),
+    t INTEGER NOT NULL,         -- unix seconds
+    p REAL NOT NULL,            -- price of the first outcome
+    PRIMARY KEY (market_id, t)
+);
 """
 
 # Columns added after the first release; created on existing databases at connect time.
@@ -69,6 +75,12 @@ CREATE TABLE IF NOT EXISTS search_contexts (
     results TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD HH24:MI:SS')
 );
+CREATE TABLE IF NOT EXISTS price_points (
+    market_id TEXT NOT NULL REFERENCES markets(id),
+    t BIGINT NOT NULL,
+    p DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (market_id, t)
+);
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS slug TEXT;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS outcomes TEXT;
@@ -81,6 +93,7 @@ ALTER TABLE markets ADD COLUMN IF NOT EXISTS group_title TEXT;
 ALTER TABLE markets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE search_contexts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE price_points ENABLE ROW LEVEL SECURITY;
 """
 
 

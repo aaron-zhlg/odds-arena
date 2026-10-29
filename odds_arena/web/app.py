@@ -1,13 +1,12 @@
 import hmac
 import json
 import os
-import time
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 
-from .. import db, jobs, polymarket
+from .. import db, jobs
 from ..scoring import brier, leaderboard
 
 STATIC = Path(__file__).parent / "static"
@@ -77,9 +76,13 @@ def api_market(market_id: str):
             "SELECT id, question, group_title, outcome FROM markets WHERE event_id = ? AND id <> ? ORDER BY group_title",
             (m["event_id"], market_id),
         ).fetchall() if m["event_id"] else []
+        sibling_preds: dict[str, dict] = {}
+        for s in siblings:
+            for p in conn.execute("SELECT model, probability FROM predictions WHERE market_id = ?", (s["id"],)).fetchall():
+                sibling_preds.setdefault(s["id"], {})[p["model"]] = p["probability"]
     outcome = m["outcome"]
     return _market_json(m) | {
-        "siblings": [dict(s) for s in siblings],
+        "siblings": [dict(s) | {"predictions": sibling_preds.get(s["id"], {})} for s in siblings],
         "search": None if not ctx else {"query": ctx["query"], "created_at": ctx["created_at"], "results": json.loads(ctx["results"])},
         "predictions": [
             dict(p) | {"brier": None if outcome is None else brier(p["probability"], outcome)} for p in preds
@@ -87,27 +90,23 @@ def api_market(market_id: str):
     }
 
 
-# Price history is public but rate limited; cache per (market, range) so repeat views don't refetch.
-HISTORY_TTL = 300
-_history_cache: dict[tuple[str, str], tuple[float, list]] = {}
-_token_cache: dict[str, str] = {}
+# Seconds of history per chart range; "all" has no cutoff. Points come from price_points, filled by the
+# resolve job, so the site never calls Polymarket itself.
+HISTORY_SPANS = {"1d": 86400, "1w": 7 * 86400, "1m": 30 * 86400, "all": None}
 
 
 @app.get("/api/markets/{market_id}/history")
 def api_market_history(market_id: str, range: str = "1w"):
-    if range not in polymarket.HISTORY_RANGES:
-        raise HTTPException(status_code=400, detail=f"range must be one of {list(polymarket.HISTORY_RANGES)}")
-    hit = _history_cache.get((market_id, range))
-    if hit and time.time() - hit[0] < HISTORY_TTL:
-        return {"range": range, "points": hit[1]}
-    try:
-        token = _token_cache.get(market_id) or polymarket.fetch_yes_token(market_id)
-        _token_cache[market_id] = token
-        points = polymarket.fetch_price_history(token, range)
-    except Exception as e:  # unknown market, or Polymarket unavailable
-        raise HTTPException(status_code=502, detail=f"Price history unavailable: {e}")
-    _history_cache[(market_id, range)] = (time.time(), points)
-    return {"range": range, "points": points}
+    if range not in HISTORY_SPANS:
+        raise HTTPException(status_code=400, detail=f"range must be one of {list(HISTORY_SPANS)}")
+    with db.connect() as conn:
+        latest = conn.execute("SELECT MAX(t) AS t FROM price_points WHERE market_id = ?", (market_id,)).fetchone()["t"]
+        if latest is None:
+            return {"range": range, "points": []}
+        since = latest - HISTORY_SPANS[range] if HISTORY_SPANS[range] else 0
+        rows = conn.execute("SELECT t, p FROM price_points WHERE market_id = ? AND t >= ? ORDER BY t",
+                            (market_id, since)).fetchall()
+    return {"range": range, "points": [[r["t"], r["p"]] for r in rows]}
 
 
 def _check_cron_auth(authorization: str | None):

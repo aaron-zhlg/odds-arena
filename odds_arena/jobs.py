@@ -21,10 +21,9 @@ def run_predict(limit: int = 20, model_names: list[str] | None = None, within_da
                 time_budget: float | None = None, log: Log = print) -> dict:
     deadline = time.monotonic() + time_budget if time_budget else None
     models = load_models(model_names or ENABLED_MODELS)
-    # Look past the top `limit` markets: ones every model already predicted are skipped, so each run
-    # works on up to `limit` markets that still need predictions instead of re-checking the same top ones.
-    markets = polymarket.fetch_open_markets(limit=100, within_days=within_days)
-    log(f"Fetched {len(markets)} open markets")
+    # Page through open markets (highest volume first), skipping ones every model already predicted, until
+    # `limit` markets that still need predictions are done. Pages are fetched only as far as needed.
+    markets = polymarket.iter_open_markets(within_days=within_days)
     made = failed = worked = 0
     timed_out = False
     with db.connect() as conn, ThreadPoolExecutor(max_workers=max(len(models), 1)) as pool:
@@ -99,8 +98,9 @@ def _search_context(conn, market, log: Log) -> list[dict]:
 
 
 def run_resolve(time_budget: float | None = None, log: Log = print) -> dict:
+    """For every unresolved market: record the outcome once Polymarket settles it, and refresh its prices."""
     deadline = time.monotonic() + time_budget if time_budget else None
-    checked = resolved = failed = 0
+    checked = resolved = failed = prices = 0
     timed_out = False
     with db.connect() as conn:
         # Random order so a time-limited run doesn't keep re-checking the same markets.
@@ -118,12 +118,34 @@ def run_resolve(time_budget: float | None = None, log: Log = print) -> dict:
                 failed += 1
                 log(f"  failed to fetch {row['id']}: {e}")
                 continue
+            try:
+                prices += _sync_prices(conn, m)
+            except Exception as e:  # price history is nice to have; never block resolution on it
+                log(f"  price history failed for {m.id}: {e}")
             if m.resolved_outcome is not None:
                 conn.execute(
                     "UPDATE markets SET outcome=?, resolved_at=? WHERE id=?",
                     (m.resolved_outcome, db.now(), m.id),
                 )
-                conn.commit()
                 resolved += 1
                 log(f"  resolved {m.outcomes[0 if m.resolved_outcome else 1]}  {m.question[:70]}")
-    return {"pending": len(pending), "checked": checked, "resolved": resolved, "failed": failed, "timed_out": timed_out}
+            conn.commit()
+    return {"pending": len(pending), "checked": checked, "resolved": resolved, "prices": prices,
+            "failed": failed, "timed_out": timed_out}
+
+
+def _sync_prices(conn, m) -> int:
+    """Copy the market's price history into price_points so the site only ever reads our database.
+    First sight: the whole history daily plus the last week hourly. After that, incremental: only points
+    newer than the latest one stored."""
+    if not m.first_token:
+        return 0
+    latest = conn.execute("SELECT MAX(t) AS t FROM price_points WHERE market_id = ?", (m.id,)).fetchone()["t"]
+    if latest is None:
+        points = polymarket.fetch_price_history(m.first_token, "all") + polymarket.fetch_price_history(m.first_token, "1w")
+    else:
+        points = polymarket.fetch_price_history(m.first_token, since=latest + 1)
+    for t, p in points:
+        conn.execute("INSERT INTO price_points (market_id, t, p) VALUES (?, ?, ?) ON CONFLICT (market_id, t) DO NOTHING",
+                     (m.id, t, p))
+    return len(points)
