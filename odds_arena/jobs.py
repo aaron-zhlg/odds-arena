@@ -80,6 +80,7 @@ def _save_market(conn, m) -> None:
         "question": m.question, "end_date": m.end_date, "description": m.description, "slug": m.slug,
         "outcomes": json.dumps(m.outcomes, ensure_ascii=False), "event_id": m.event_id, "event_title": m.event_title,
         "event_slug": m.event_slug, "group_title": m.group_title, "neg_risk": int(m.neg_risk),
+        "category": m.category,
     }
     cols = ", ".join(fields)
     updates = ", ".join(f"{c} = excluded.{c}" for c in fields if c != "question")

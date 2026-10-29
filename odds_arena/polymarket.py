@@ -1,6 +1,7 @@
 """Thin client for Polymarket's public Gamma API (no auth needed for reads)."""
 from __future__ import annotations
 
+import itertools
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -31,6 +32,7 @@ class Market:
     # True when the event's options are mutually exclusive (exactly one wins, e.g. "Which party wins?").
     # Other events can have several Yes options (e.g. "ceasefire holds through Oct 31 / Nov 15").
     neg_risk: bool = False
+    category: str | None = None  # from the event's Polymarket tags, see CATEGORIES
 
     @property
     def is_binary(self) -> bool:
@@ -83,6 +85,25 @@ def question_kind(outcomes: list[str], neg_risk: bool, event_id: str | None) -> 
     return YES_NO
 
 
+# Display category -> the Polymarket tag slugs that mean it. An event usually carries several tags (a
+# geopolitics event is tagged Politics too), so the first matching category in this order wins.
+CATEGORIES = {
+    "Sports": ["sports"],
+    "Crypto": ["crypto"],
+    "Weather": ["weather"],
+    "Tech": ["tech", "ai"],
+    "Culture": ["pop-culture"],
+    "Finance": ["finance", "economy"],
+    "Geopolitics": ["geopolitics"],
+    "Politics": ["politics"],
+}
+
+
+def category_of(tags: list) -> str | None:
+    slugs = {(t.get("slug") or "").lower() for t in tags if isinstance(t, dict)}
+    return next((name for name, wanted in CATEGORIES.items() if slugs & set(wanted)), None)
+
+
 def _parse_list(value) -> list:
     if isinstance(value, str):
         try:
@@ -111,20 +132,18 @@ def _to_market(raw: dict) -> Market:
         group_title=raw.get("groupItemTitle") or None,
         first_token=(_parse_list(raw.get("clobTokenIds")) or [None])[0],
         neg_risk=bool(raw.get("negRisk")),
+        category=category_of(raw.get("tags") or event.get("tags") or []),
     )
 
 
 PAGE_SIZE = 100
 
 
-def _open_params(within_days: float | None, offset: int) -> dict:
-    params = {"active": "true", "closed": "false", "limit": PAGE_SIZE, "offset": offset,
-              "order": "volumeNum", "ascending": "false"}
-    if within_days:
-        now = datetime.now(timezone.utc)
-        params["end_date_min"] = now.isoformat()
-        params["end_date_max"] = (now + timedelta(days=within_days)).isoformat()
-    return params
+def _window(within_days: float | None) -> dict:
+    if not within_days:
+        return {}
+    now = datetime.now(timezone.utc)
+    return {"end_date_min": now.isoformat(), "end_date_max": (now + timedelta(days=within_days)).isoformat()}
 
 
 def _forecastable(m: Market, min_volume: float = 10_000) -> bool:
@@ -134,30 +153,48 @@ def _forecastable(m: Market, min_volume: float = 10_000) -> bool:
     return m.is_binary and bool(m.prices) and m.volume >= min_volume and 0.02 <= m.yes_price <= 0.98
 
 
+def _event_markets(e: dict) -> list[Market]:
+    """An event's markets, with the event (and its tags, for the category) attached to each."""
+    ev = {"id": e["id"], "title": e.get("title"), "slug": e.get("slug"), "tags": e.get("tags") or []}
+    return [_to_market(raw | {"events": [ev], "negRisk": e.get("negRisk"), "tags": e.get("tags") or []})
+            for raw in e.get("markets", []) if not raw.get("closed")]
+
+
+def _iter_category(slugs: list[str], within_days: float | None, max_pages: int):
+    """Open events tagged with any of `slugs`, highest volume first, page by page."""
+    for slug in slugs:
+        for page in range(max_pages):
+            r = httpx.get(f"{GAMMA_API}/events", timeout=30, params={
+                "active": "true", "closed": "false", "tag_slug": slug, "limit": PAGE_SIZE, "offset": page * PAGE_SIZE,
+                "order": "volume", "ascending": "false", **_window(within_days)})
+            r.raise_for_status()
+            events = r.json()
+            yield from events
+            if len(events) < PAGE_SIZE:
+                break
+
+
+def iter_open_markets(within_days: float | None = 30, max_pages: int = 3):
+    """Forecastable open markets, taking one event from each category in turn so a run covers sports,
+    crypto, weather... not just the highest-volume politics. Pages are fetched only as far as needed;
+    `max_pages` bounds requests per category tag. (Polymarket's /markets ignores tag filters, /events doesn't.)"""
+    streams = [_iter_category(slugs, within_days, max_pages) for slugs in CATEGORIES.values()]
+    seen: set[str] = set()
+    while streams:
+        for stream in list(streams):
+            for e in stream:  # the next unseen event of this category
+                if str(e["id"]) in seen:
+                    continue
+                seen.add(str(e["id"]))
+                yield from filter(_forecastable, _event_markets(e))
+                break
+            else:
+                streams.remove(stream)
+
+
 def fetch_open_markets(limit: int = 20, within_days: float | None = 30) -> list[Market]:
-    """The first page of highest-volume open markets. `within_days` keeps only markets ending that soon,
-    so results (and scores) arrive in days rather than years; None means any end date."""
-    r = httpx.get(f"{GAMMA_API}/markets", params=_open_params(within_days, 0), timeout=30)
-    r.raise_for_status()
-    return [m for m in map(_to_market, r.json()) if _forecastable(m)][:limit]
-
-
-def iter_open_markets(within_days: float | None = 30, max_pages: int = 10):
-    """Open markets page by page (highest volume first), so callers can stop as soon as they have enough.
-    `max_pages` bounds the requests a single run can make."""
-    for page in range(max_pages):
-        r = httpx.get(f"{GAMMA_API}/markets", params=_open_params(within_days, page * PAGE_SIZE), timeout=30)
-        r.raise_for_status()
-        raw = r.json()
-        yield from filter(_forecastable, map(_to_market, raw))
-        if len(raw) < PAGE_SIZE:  # last page
-            return
-
-
-CLOB_API = "https://clob.polymarket.com"
-
-# range -> (CLOB interval, minutes per point)
-HISTORY_RANGES = {"1d": ("1d", 10), "1w": ("1w", 60), "1m": ("1m", 360), "all": ("max", 1440)}
+    """The first `limit` forecastable markets across categories."""
+    return list(itertools.islice(iter_open_markets(within_days=within_days), limit))
 
 
 def fetch_yes_token(market_id: str) -> str:
@@ -198,7 +235,8 @@ def fetch_event(event_id: str) -> Event:
         if raw.get("closed") or not raw.get("active", True):
             continue
         # Markets listed inside an event don't repeat the event, so attach it.
-        raw = raw | {"events": [{"id": e["id"], "title": e.get("title"), "slug": e.get("slug")}], "negRisk": e.get("negRisk")}
+        raw = raw | {"events": [{"id": e["id"], "title": e.get("title"), "slug": e.get("slug")}], "negRisk": e.get("negRisk"),
+                     "tags": e.get("tags") or []}
         options.append(_to_market(raw))
     return Event(id=str(e["id"]), title=e.get("title", ""), description=e.get("description") or "",
                  end_date=e.get("endDate"), options=options)

@@ -125,6 +125,33 @@
   .chip { cursor: pointer; border: 1px solid var(--line-strong); background: var(--card); color: var(--muted); padding: 6px 14px; border-radius: 99px; font: inherit; font-size: 13px; transition: all .2s; }
   .chip:hover { color: var(--text); }
   .chip.on { color: #5a3a00; background: var(--sun-soft); border-color: var(--sun); font-weight: 500; }
+  /* Market cards: position on a 0-100% track carries the probabilities; one number per row */
+  .legend-bar { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: 12px; color: var(--muted); margin: -6px 0 14px; }
+  .legend-bar > span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend-bar .muted { font-style: italic; }
+  .lfill { display: inline-block; width: 26px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #ffd56a, #f5b400); }
+  .ctop { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); }
+  .ctop .cat { text-transform: uppercase; letter-spacing: .12em; font-weight: 600; color: #8a6400; }
+  .ctop .badge { display: inline-block; width: auto; padding: 2px 8px; font-size: 10px; letter-spacing: .04em; }
+  .headline { display: flex; align-items: baseline; gap: 8px; }
+  .headline b { font: 700 30px/1 "JetBrains Mono", monospace; letter-spacing: -.02em; }
+  .headline span, .sub { color: var(--muted); font-size: 12px; }
+  .sides { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; font-size: 14px; }
+  .sides span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sides b { font-family: "JetBrains Mono", monospace; }
+  .track { position: relative; height: 34px; margin: 0 8px; }
+  .tband { position: absolute; left: 0; right: 0; top: 12px; height: 10px; border-radius: 5px; background: #f3eddd; overflow: hidden; }
+  .tfill { height: 100%; background: linear-gradient(90deg, #ffd56a, #f5b400); border-radius: 5px; }
+  .tmid { position: absolute; left: 50%; top: 8px; width: 1px; height: 18px; background: rgba(31,36,48,.18); }
+  .tdot { position: absolute; width: 17px; height: 17px; margin-left: -8.5px; border-radius: 50%; background: var(--c); color: #fff;
+          font: 700 10px/17px "JetBrains Mono", monospace; text-align: center; box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0,0,0,.2); cursor: default; }
+  .tdot.static { position: static; display: inline-block; margin: 0; }
+  .tdot.hit { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--yes); }
+  .tdot.miss { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--no); }
+  .tends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin: -4px 8px 0; }
+  .olabel { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+  .olabel b { font-family: "JetBrains Mono", monospace; }
+  .won { color: var(--yes); font-weight: 700; }
   /* Market cards: the form follows the question type */
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; box-shadow: var(--shadow);
@@ -152,12 +179,11 @@
   .team b { font-family: "JetBrains Mono", monospace; font-size: 15px; }
   .team.won { background: var(--yes-bg); box-shadow: inset 0 0 0 1px rgba(21,128,61,.3); }
   .orows { display: grid; }
-  .orow { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; padding: 7px 4px; border-top: 1px solid var(--line); border-radius: 6px; }
+  .orow { display: block; padding: 6px 4px 0; border-top: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
   .orow:first-child { border-top: 0; }
   .orow:hover { background: #fffbef; }
   .orow .on { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .orow .cr { font-family: "JetBrains Mono", monospace; font-weight: 700; }
-  .orow .mr { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin-top: 3px; }
   .pills.sm { gap: 4px; }
   .pills.sm .pill { padding: 1px 7px; font-size: 11px; gap: 4px; }
   .pills.sm .pill i { width: 6px; height: 6px; }
@@ -310,7 +336,7 @@
   <nav class="crumb" id="crumb" hidden><a href="/">← Odds Arena</a></nav>
   <section id="markets-section">
     <h2 id="markets-title">Markets</h2>
-    <p class="section-note">Each card is one Polymarket question, drawn for its type: a yes/no question shows the crowd's chance on a gauge, a matchup shows both sides, and a multi-option event lists its options. Pills are each model's pick and how sure it is (e.g. <span class="mono">openai → Yes 78%</span>); in a one-winner event, the pick is the option the model rates highest. Once Polymarket settles the question, ✓ / ✗ mark whether the pick was right. <b>Crowd</b> is the Polymarket price when the models made their calls. Click a card for the full comparison.</p>
+    <div class="legend-bar" id="legend-bar"></div>
     <div class="toolbar"><div class="filters" id="filters"></div><input id="search" class="search" type="search" placeholder="Search questions, options, events" hidden></div>
     <div class="cards" id="markets"></div>
     <a class="chip more" id="more" href="/markets">View all markets →</a>
@@ -501,15 +527,6 @@ const modelsOf = m => allModels.filter(k => k !== 'market' && m.predictions[k]);
 // Right/wrong only once settled; exactly 50% picks no side.
 const sideClass = (p, outcome) => outcome === null || outcome === undefined || p === 0.5 ? '' : ((p > 0.5 ? 1 : 0) === outcome ? ' hit' : ' miss');
 
-function gauge(p) {
-  // Half-circle gauge for the crowd's chance of the first option.
-  const r = 28, cx = 36, cy = 36, a = Math.PI * (1 - (p ?? 0));
-  const end = [cx + r * Math.cos(a), cy - r * Math.sin(a)];
-  const arc = p == null ? '' : `<path d="M${cx - r},${cy} A${r},${r} 0 0 1 ${end[0].toFixed(1)},${end[1].toFixed(1)}" fill="none" stroke="#f0a400" stroke-width="7" stroke-linecap="round"/>`;
-  return `<div class="gauge"><svg viewBox="0 0 72 42" aria-hidden="true"><path d="M${cx - r},${cy} A${r},${r} 0 0 1 ${cx + r},${cy}" fill="none" stroke="#f1ead8" stroke-width="7" stroke-linecap="round"/>${arc}
-    <text x="36" y="34" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="#1f2430">${p == null ? '–' : pct(p)}</text></svg><div class="lbl">crowd</div></div>`;
-}
-
 const pill = (k, text, cls = '') => `<span class="pill${cls}${isSearch(k) ? ' hollow' : ''}" style="--c:${colorOf(k)}" title="${esc(MODEL_INFO[k] || k)}"><i></i>${esc(k)} ${text}</span>`;
 
 // A probability for the first outcome, read as a pick: the side above 50% and how sure the model is.
@@ -537,53 +554,78 @@ function eventPicks(items) {
 }
 const isExclusive = items => items.some(m => m.kind === 'one_winner');  // kind comes from the server's rule
 
+const INITIALS = { openai: 'O', typesafe: 'T', perplexity: 'P' };
+const initialOf = k => INITIALS[baseOf(k)] || baseOf(k)[0].toUpperCase();
+function whenLeft(end) {
+  if (!end) return '';
+  const days = Math.ceil((Date.parse(end) - Date.now()) / 86400000);
+  return days < 0 ? 'closed' : days === 0 ? 'closes today' : days === 1 ? '1 day left' : `${days} days left`;
+}
+
+// One 0-100% track for an option: the crowd as a sunny fill, each AI model as a lettered dot at its chance.
+// Dots sit on three lanes so close calls don't hide each other; exact numbers are on hover and in the detail.
+function track(m, label = firstOpt(m)) {
+  const c = crowdOf(m);
+  const dots = modelsOf(m).map((k, i) => {
+    const p = m.predictions[k].p;
+    return `<span class="tdot${sideClass(p, m.outcome)}" style="left:${p * 100}%;top:${[0, 9, 18][i % 3]}px;--c:${colorOf(k)}"
+      data-tip="<b>${esc(k)}</b> · ${pct(p)} ${esc(label)}">${initialOf(k)}</span>`;
+  }).join('');
+  return `<div class="track"><div class="tband"><div class="tfill" style="width:${(c ?? 0) * 100}%"></div></div><span class="tmid"></span>${dots}</div>`;
+}
+
+const cardTop = m => `<div class="ctop"><span class="cat">${esc(m.category || 'Other')}</span><span>${m.outcome !== null ? statusTag(m) : esc(whenLeft(m.end_date))}</span></div>`;
+
 function yesNoCard(m) {
-  const ms = modelsOf(m);
+  const c = crowdOf(m);
   return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
-    <div class="top"><div><div class="kind">Yes / No</div><div class="ttl">${esc(m.question)}</div></div>${m.outcome === null ? gauge(crowdOf(m)) : ''}</div>
-    ${ms.length ? `<div class="pills-label">Model picks · how sure</div><div class="pills">${ms.map(k => pickPill(k, m.predictions[k].p, m)).join('')}</div>` : '<div class="pills-label">No model calls yet</div>'}
-    <div class="foot">${statusTag(m)}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div>
+    ${cardTop(m)}
+    <div class="ttl">${esc(m.question)}</div>
+    <div class="headline"><b>${c == null ? '–' : pct(c)}</b><span>crowd says Yes</span></div>
+    ${track(m, 'Yes')}
+    <div class="tends"><span>No</span><span>Yes</span></div>
   </article>`;
 }
 
 function matchupCard(m) {
-  const [a, b] = m.outcomes, c = crowdOf(m), ms = modelsOf(m);
-  const team = (name, p, i) => `<div class="team${m.outcome !== null && (m.outcome ? 0 : 1) === i ? ' won' : ''}"><span>${esc(name)}</span><b>${p == null ? '–' : pct(p)}</b></div>`;
+  const [a, b] = m.outcomes, c = crowdOf(m);
   return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
-    <div><div class="kind">${esc(a)} vs ${esc(b)}</div><div class="ttl">${esc(m.question)}</div></div>
-    <div class="teams">${team(a, c, 0)}${team(b, c == null ? null : 1 - c, 1)}</div>
-    ${ms.length ? `<div class="pills-label">Model picks · how sure (crowd shown above)</div><div class="pills">${ms.map(k => pickPill(k, m.predictions[k].p, m)).join('')}</div>` : '<div class="pills-label">No model calls yet</div>'}
-    <div class="foot">${statusTag(m)}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div>
+    ${cardTop(m)}
+    <div class="ttl">${esc(m.question)}</div>
+    <div class="sides"><span><b>${c == null ? '–' : pct(c)}</b> ${esc(a)}</span><span>${esc(b)} <b>${c == null ? '–' : pct(1 - c)}</b></span></div>
+    ${track(m, a)}
+    <div class="tends"><span>← ${esc(b)}</span><span>${esc(a)} →</span></div>
   </article>`;
 }
 
 function eventCard(g) {
   const items = [...g.items].sort((x, y) => (crowdOf(y) ?? -1) - (crowdOf(x) ?? -1));
-  const shownOpts = items.slice(0, 3);
-  const row = m => {
-    const ms = modelsOf(m);
-    const calls = ms.length
-      ? `<span class="pills sm">${ms.map(k => pill(k, `<b>${pct(m.predictions[k].p)}</b>`, sideClass(m.predictions[k].p, m.outcome))).join('')}</span>`
-      : 'no model calls yet';
-    return `<div class="orow${m.outcome === 1 ? ' won' : ''}" data-id="${esc(m.id)}">
-      <span class="on">${esc(m.group_title || m.question)}</span><span class="cr">${crowdOf(m) == null ? '–' : pct(crowdOf(m))}</span><span class="mr">${calls}</span></div>`;
-  };
-  const settled = items.filter(m => m.outcome !== null).length;
   const exclusive = isExclusive(items);
-  const picks = exclusive ? eventPicks(items) : [];
+  const head = items.find(m => m.outcome !== null) || items[0];
+  const row = m => `<div class="orow" data-id="${esc(m.id)}">
+      <div class="olabel"><span class="on">${esc(m.group_title || m.question)}${m.outcome === 1 ? ' <span class="won">✓</span>' : ''}</span><b>${crowdOf(m) == null ? '–' : pct(crowdOf(m))}</b></div>
+      ${track(m, m.group_title || 'Yes')}</div>`;
   return `<article class="card" tabindex="0" data-id="${esc(items[0].id)}">
-    <div><div class="kind">${items.length} options · ${exclusive ? 'one winner' : 'several can be Yes'} · chance of each</div><div class="ttl">${esc(g.title || items[0].question)}</div></div>
-    <div class="orows">${shownOpts.map(row).join('')}${items.length > 3 ? `<div class="more-opts">+${items.length - 3} more options · open for all</div>` : ''}</div>
-    ${picks.length ? `<div class="pills-label">Model picks · who wins</div><div class="pills">${picks.map(x =>
-      pill(x.model, `<span class="pick">→ ${esc(x.pick.group_title || x.pick.question)}</span> <b>${pct(x.p)}</b>`, x.verdict)).join('')}</div>` : ''}
-    <div class="foot"><span>${settled ? `${settled}/${items.length} settled` : '<span class="badge open">Open</span>'}</span><span class="mono">${items[0].end_date ? 'closes ' + esc(items[0].end_date.slice(0, 10)) : ''}</span></div>
+    <div class="ctop"><span class="cat">${esc(head.category || 'Other')}</span><span>${esc(whenLeft(head.end_date))}</span></div>
+    <div class="ttl">${esc(g.title || items[0].question)}</div>
+    <div class="sub">${items.length} options · ${exclusive ? 'one winner' : 'each can happen'}</div>
+    <div class="orows">${items.slice(0, 3).map(row).join('')}</div>
+    ${items.length > 3 ? `<div class="more-opts">+${items.length - 3} more options</div>` : ''}
   </article>`;
+}
+
+function renderLegend() {
+  const ai = [...new Set(allModels.filter(k => k !== 'market').map(baseOf))];
+  document.getElementById('legend-bar').innerHTML =
+    `<span><span class="lfill"></span>Crowd: the Polymarket price</span>` +
+    ai.map(k => `<span><span class="tdot static" style="--c:${colorOf(k)}">${initialOf(k)}</span>${esc(k)}</span>`).join('') +
+    `<span class="muted">AI models read fresh web search results, never the price</span>`;
 }
 
 function renderMarkets() {
   const el = document.getElementById('markets');
   const q = query.trim().toLowerCase();
-  const all = allMarkets.filter(m => (filter === 'all' || (filter === 'open' ? m.outcome === null : m.outcome !== null))
+  const all = allMarkets.filter(m => (filter === 'all' || (filter === 'resolved' ? m.outcome !== null : (m.category || 'Other') === filter))
     && (!q || [m.question, m.group_title, m.event_title, ...(m.outcomes || [])].some(t => (t || '').toLowerCase().includes(q))));
   // Options of one multi-option event share a card; a market alone in its event gets its own card.
   const groups = [], byEvent = {};
@@ -592,7 +634,13 @@ function renderMarkets() {
     if (!byEvent[key]) groups.push(byEvent[key] = { key, title: m.event_title, items: [] });
     byEvent[key].items.push(m);
   });
-  const list = groups.slice(0, shown);
+  // Mix categories (round robin, soonest-closing first within each) so no single topic fills the page.
+  const byCat = {};
+  groups.forEach(g => (byCat[g.items[0].category || 'Other'] ||= []).push(g));
+  Object.values(byCat).forEach(gs => gs.sort((a, b) => (a.items[0].end_date || '9').localeCompare(b.items[0].end_date || '9')));
+  const mixed = [];
+  for (let i = 0; mixed.length < groups.length; i++) Object.values(byCat).forEach(gs => gs[i] && mixed.push(gs[i]));
+  const list = mixed.slice(0, shown);
   const more = document.getElementById('more');
   more.style.display = LIST_PAGE ? 'none' : '';  // always offer the full list (with search), even when it all fits
   more.textContent = `View all ${groups.length} markets →`;
@@ -853,7 +901,10 @@ document.getElementById('markets').addEventListener('keydown', e => {
 });
 
 function renderFilters() {
-  const opts = [['all', 'All'], ['resolved', 'Resolved'], ['open', 'Open']];
+  const order = ['Politics', 'Sports', 'Crypto', 'Finance', 'Tech', 'Geopolitics', 'Culture', 'Weather', 'Other'];
+  const present = new Set(allMarkets.map(m => m.category || 'Other'));
+  const opts = [['all', 'All'], ...order.filter(c => present.has(c)).map(c => [c, c]),
+                ...(allMarkets.some(m => m.outcome !== null) ? [['resolved', 'Resolved']] : [])];
   const el = document.getElementById('filters');
   el.innerHTML = opts.map(([k, l]) => `<button class="chip ${k === filter ? 'on' : ''}" data-f="${k}">${l}</button>`).join('');
   el.onclick = e => { const f = e.target.dataset.f; if (f) { filter = f; renderFilters(); renderMarkets(); } };
@@ -897,6 +948,7 @@ async function load() {
   renderPodium(board);
   renderBoard(board);
   renderCalibration(markets, allModels);
+  renderLegend();
   renderFilters();
   renderMarkets();
   route();  // open a shared #market/<id> link after colors are known

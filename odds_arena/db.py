@@ -50,6 +50,7 @@ MARKET_COLUMNS_ADDED = {
     "outcomes": "TEXT",  # JSON list of the two outcome labels; `outcome` = 1 means the first one won
     "event_id": "TEXT", "event_title": "TEXT", "event_slug": "TEXT", "group_title": "TEXT",
     "neg_risk": "INTEGER",  # 1 = the event's options are mutually exclusive (one winner)
+    "category": "TEXT",     # Sports, Crypto, Politics... from the event's Polymarket tags
 }
 
 POSTGRES_SCHEMA = """
@@ -90,6 +91,7 @@ ALTER TABLE markets ADD COLUMN IF NOT EXISTS event_title TEXT;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS event_slug TEXT;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS group_title TEXT;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS neg_risk INTEGER;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS category TEXT;
 -- Supabase exposes public tables through its REST API. RLS with no policies blocks that;
 -- this app connects directly as the table owner, which RLS does not restrict.
 ALTER TABLE markets ENABLE ROW LEVEL SECURITY;

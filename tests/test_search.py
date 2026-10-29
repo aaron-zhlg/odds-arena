@@ -177,12 +177,19 @@ def test_markets_api_returns_outcomes_events_and_siblings(monkeypatch, tmp_path)
 
 def test_settled_looking_markets_are_skipped(monkeypatch):
     from odds_arena import polymarket
-    raw = lambda i, p: {"id": i, "question": "Q", "outcomes": '["A", "B"]', "outcomePrices": f'["{p}", "{1 - p}"]', "volume": "1e6"}
+    mk = lambda i, p: {"id": i, "question": "Q", "outcomes": '["A", "B"]', "outcomePrices": f'["{p}", "{1 - p}"]', "volume": "1e6"}
+
     class R:
+        def __init__(self, params): self.params = params
         def raise_for_status(self): pass
-        def json(self): return [raw("live", 0.6), raw("done", 0.995), raw("dead", 0.005)]
-    monkeypatch.setattr(polymarket.httpx, "get", lambda *a, **k: R())
-    assert [m.id for m in polymarket.fetch_open_markets(within_days=None)] == ["live"]
+        def json(self):
+            if self.params["tag_slug"] != "sports" or self.params["offset"]:
+                return []
+            return [{"id": "e", "title": "E", "tags": [{"slug": "sports"}], "markets": [mk("live", 0.6), mk("done", 0.995), mk("dead", 0.005)]}]
+
+    monkeypatch.setattr(polymarket.httpx, "get", lambda url, params, timeout: R(params))
+    got = polymarket.fetch_open_markets(within_days=None)
+    assert [m.id for m in got] == ["live"] and got[0].category == "Sports" and got[0].event_title == "E"
 
 
 def test_predict_moves_on_to_markets_that_still_need_predictions(monkeypatch, tmp_path):
@@ -196,28 +203,32 @@ def test_predict_moves_on_to_markets_that_still_need_predictions(monkeypatch, tm
     assert [r["markets"] for r in runs] == [2, 2, 1] and sum(r["predictions"] for r in runs) == 5
 
 
-def test_iter_open_markets_pages_lazily_and_stops(monkeypatch):
+def test_iter_open_markets_takes_categories_in_turn(monkeypatch):
     from odds_arena import polymarket
-    raw = lambda i: {"id": i, "question": "Q", "outcomes": '["Yes", "No"]', "outcomePrices": '["0.5", "0.5"]', "volume": "1e6"}
-    offsets = []
+    mk = lambda i: {"id": i, "question": "Q", "outcomes": '["Yes", "No"]', "outcomePrices": '["0.5", "0.5"]', "volume": "1e6"}
+    pool = {  # tag slug -> its events, highest volume first; "shared" is tagged both politics and geopolitics
+        "politics": [{"id": "p1", "tags": [{"slug": "politics"}], "markets": [mk("p1")]},
+                     {"id": "shared", "tags": [{"slug": "politics"}, {"slug": "geopolitics"}], "markets": [mk("s")]}],
+        "sports": [{"id": "s1", "tags": [{"slug": "sports"}], "markets": [mk("s1")]}],
+        "geopolitics": [{"id": "shared", "tags": [{"slug": "politics"}, {"slug": "geopolitics"}], "markets": [mk("s")]}],
+    }
+    requests = []
 
     class R:
-        def __init__(self, off): self.off = off
+        def __init__(self, params): self.params = params
         def raise_for_status(self): pass
-        def json(self):  # 2.5 pages of markets in total
-            n = {0: 100, 100: 100, 200: 50}.get(self.off, 0)
-            return [raw(f"{self.off + i}") for i in range(n)]
+        def json(self): return pool.get(self.params["tag_slug"], []) if self.params["offset"] == 0 else []
 
     def fake_get(url, params, timeout):
-        offsets.append(params["offset"]); return R(params["offset"])
+        requests.append(params["tag_slug"]); return R(params)
 
     monkeypatch.setattr(polymarket.httpx, "get", fake_get)
-    it = polymarket.iter_open_markets(within_days=None)
-    first = [next(it) for _ in range(101)]           # needs page 2 only once page 1 runs out
-    assert offsets == [0, 100] and first[-1].id == "100"
-    assert len(first) + len(list(it)) == 250 and offsets == [0, 100, 200]  # stops after the short last page
-    offsets.clear()
-    assert len(list(polymarket.iter_open_markets(within_days=None, max_pages=1))) == 100 and offsets == [0]
+    got = list(polymarket.iter_open_markets(within_days=None))
+    assert [m.id for m in got] == ["s1", "s", "p1"]           # sports first, each event once, then politics
+    assert {m.id: m.category for m in got} == {"s1": "Sports", "s": "Geopolitics", "p1": "Politics"}
+    first = polymarket.iter_open_markets(within_days=None)
+    requests.clear(); next(first)
+    assert requests == ["sports"]                              # lazy: one request for the first market
 
 
 def test_one_winner_event_is_forecast_as_a_unit(monkeypatch, tmp_path):
