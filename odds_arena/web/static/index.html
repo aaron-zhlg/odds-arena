@@ -125,6 +125,9 @@
   .chip { cursor: pointer; border: 1px solid var(--line-strong); background: var(--card); color: var(--muted); padding: 6px 14px; border-radius: 99px; font: inherit; font-size: 13px; transition: all .2s; }
   .chip:hover { color: var(--text); }
   .chip.on { color: #5a3a00; background: var(--sun-soft); border-color: var(--sun); font-weight: 500; }
+  /* Resolved is a different kind of filter (finished questions), so it gets the "settled" green */
+  .chip.res { color: var(--yes); border-color: rgba(21,128,61,.35); background: var(--yes-bg); }
+  .chip.res.on { color: #fff; background: var(--yes); border-color: var(--yes); }
   /* Market cards: position on a 0-100% track carries the probabilities; one number per row */
   .legend-bar { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: 12px; color: var(--muted); margin: -6px 0 14px; }
   .legend-bar > span { display: inline-flex; align-items: center; gap: 6px; }
@@ -1029,7 +1032,7 @@ function renderFilters() {
   // "Resolved" is always offered: it's where finished questions and their scores live.
   const opts = [['all', 'All'], ...order.filter(c => present.has(c)).map(c => [c, c]), ['resolved', 'Resolved ✓']];
   const el = document.getElementById('filters');
-  el.innerHTML = opts.map(([k, l]) => `<button class="chip ${k === filter ? 'on' : ''}" data-f="${k}">${l}</button>`).join('');
+  el.innerHTML = opts.map(([k, l]) => `<button class="chip${k === 'resolved' ? ' res' : ''}${k === filter ? ' on' : ''}" data-f="${k}">${l}</button>`).join('');
   el.onclick = e => { const f = e.target.dataset.f; if (f) { filter = f; renderFilters(); renderMarkets(); } };
 }
 
