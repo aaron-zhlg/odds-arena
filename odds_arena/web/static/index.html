@@ -735,7 +735,7 @@ function renderLegend() {
   const ai = [...new Set(allModels.filter(k => k !== 'market').map(baseOf))];
   document.getElementById('legend-bar').innerHTML =
     ai.map(k => `<span><span class="tdot static" style="--c:${colorOf(k)}">${initialOf(k)}</span>${esc(k)}</span>`).join('') +
-    `<span class="muted">AI models read fresh web search results, never the price</span>`;
+    `<span class="muted">AI models use web search results as context</span>`;
 }
 
 function renderMarkets() {
@@ -876,7 +876,7 @@ function renderDetail(d) {
     ${isYesNo(d) ? '' : `<p class="src-meta" style="margin-top:12px">Outcomes: <b>${esc(d.outcomes[0])}</b> vs <b>${esc(d.outcomes[1])}</b>. Every percentage below is the chance of <b>${esc(d.outcomes[0])}</b>.</p>`}
     ${splitChart}
     <h4>Model calls · chance of ${esc(firstOpt(d))}</h4>
-    <p class="src-meta">Each AI model read the web search results listed at the bottom of this page before answering; none of them saw the market price.</p>${preds}
+    <p class="src-meta">Each AI model used the web search results listed at the bottom of this page as context.</p>${preds}
     ${optTable}
     <h4>Actual result</h4>
     <div class="result-card">${badgeFor(d)}<span style="color:var(--muted)">${resolved ? `Polymarket settled it as <b>${esc(winner(d))}</b> on ${esc((d.resolved_at || '').slice(0, 10))}` : 'Not resolved yet. Scores appear here once Polymarket settles it.'}</span></div>
