@@ -149,12 +149,23 @@
   .tdot.hit { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--yes); }
   .tdot.miss { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--no); }
   .tends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin: -4px 8px 0; }
+  .cols { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 10px; margin-top: auto; padding-top: 18px; }
+  .cols .c50 { position: absolute; left: 0; right: 0; top: calc(18px + 45px); border-top: 1px dashed rgba(31,36,48,.2); font-size: 9px; color: var(--muted); text-align: left; line-height: 0; }
+  .cols .c50::before { content: ""; }
+  .col { text-align: center; min-width: 0; }
+  .col .cbox { position: relative; height: 90px; margin: 0 auto; width: 34px; border-radius: 6px 6px 0 0; background: #f6f1e4; }
+  .col .cbar { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 6px 6px 0 0; background: var(--c); min-height: 2px; }
+  .col.crowd .cbar { background: linear-gradient(180deg, #f5b400, #ffd56a); }
+  .col .cval { position: absolute; left: 50%; transform: translate(-50%, -3px); font: 700 13px "JetBrains Mono", monospace; white-space: nowrap; z-index: 1; }
+  .col .cname { font-size: 12px; font-weight: 600; margin-top: 6px; border-top: 1px solid var(--line-strong); padding-top: 4px; }
+  .col.hit .cname::after { content: " ✓"; color: var(--yes); }
+  .col.miss .cname::after { content: " ✗"; color: var(--no); }
   .olegend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #3c4150; }
   .olegend span { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; }
   .olegend i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-  .donuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 8px; margin-top: auto; }
-  .dn { text-align: center; min-width: 0; border-radius: 10px; padding: 4px 2px 6px; }
-  .dn svg { width: 64px; height: 64px; display: block; margin: 0 auto; }
+  .donuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 4px; margin-top: auto; }
+  .dn { text-align: center; min-width: 0; border-radius: 10px; padding: 2px 0 6px; }
+  .dn svg { width: 100%; max-width: 100px; height: auto; display: block; margin: 0 auto; }
   .dn .dname { font-size: 12px; font-weight: 600; margin-top: 2px; }
   .dn .dpick { font-size: 11px; line-height: 1.25; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
   .dn.hit { background: var(--yes-bg); } .dn.hit .dpick::after { content: " ✓"; color: var(--yes); }
@@ -569,20 +580,24 @@ const INITIALS = { openai: 'O', typesafe: 'T', perplexity: 'P' };
 const OPT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 const OTHER_COLOR = '#c9ccd4';
 
-// Donut of one model's split across an event's options: segments in option order, the top share in the middle.
-function donut(shares) {
-  const r = 24, c = 2 * Math.PI * r, total = shares.reduce((t, x) => t + x.p, 0) || 1;
-  let at = 0;
-  const segs = shares.filter(x => x.p > 0).map(x => {
-    const len = x.p / total * c, gap = shares.length > 1 ? Math.min(1.5, len / 3) : 0;
-    const seg = `<circle r="${r}" cx="32" cy="32" fill="none" stroke="${x.color}" stroke-width="11"
-      stroke-dasharray="${Math.max(len - gap, 0.01)} ${c}" stroke-dashoffset="${-at}" transform="rotate(-90 32 32)"/>`;
+// Donut of one model's split across an event's options: segments in option order, each labelled with its
+// share when there's room (>= 10%); the centre names the model. Smaller shares are on hover.
+function donut(shares, centre) {
+  const R = 30, W = 19, C = 40, circ = 2 * Math.PI * R, total = shares.reduce((t, x) => t + x.p, 0) || 1;
+  let at = 0, segs = '', labels = '';
+  shares.filter(x => x.p > 0).forEach(x => {
+    const len = x.p / total * circ, gap = shares.length > 1 ? Math.min(1.5, len / 3) : 0;
+    segs += `<circle r="${R}" cx="${C}" cy="${C}" fill="none" stroke="${x.color}" stroke-width="${W}"
+      stroke-dasharray="${Math.max(len - gap, 0.01)} ${circ}" stroke-dashoffset="${-at}" transform="rotate(-90 ${C} ${C})"/>`;
+    if (x.p / total >= 0.1) {
+      const a = (at + len / 2) / circ * 2 * Math.PI - Math.PI / 2;
+      labels += `<text x="${(C + R * Math.cos(a)).toFixed(1)}" y="${(C + R * Math.sin(a) + 3.5).toFixed(1)}" text-anchor="middle"
+        font-family="JetBrains Mono" font-weight="700" font-size="10" fill="#fff">${Math.round(x.p / total * 100)}<tspan font-size="7">%</tspan></text>`;
+    }
     at += len;
-    return seg;
-  }).join('');
-  const top = shares.reduce((a, b) => (b.p > a.p ? b : a), shares[0]);
-  return `<svg viewBox="0 0 64 64" aria-hidden="true"><circle r="${r}" cx="32" cy="32" fill="none" stroke="#f1ead8" stroke-width="11"/>${segs}
-    <text x="32" y="36.5" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="13" fill="#1f2430">${pct(top.p / total)}</text></svg>`;
+  });
+  return `<svg viewBox="0 0 80 80" aria-hidden="true"><circle r="${R}" cx="${C}" cy="${C}" fill="none" stroke="#f1ead8" stroke-width="${W}"/>${segs}${labels}
+    <text x="${C}" y="${C + 5}" text-anchor="middle" font-family="Space Grotesk" font-weight="700" font-size="14" fill="#1f2430">${esc(centre)}</text></svg>`;
 }
 const initialOf = k => INITIALS[baseOf(k)] || baseOf(k)[0].toUpperCase();
 function whenLeft(end) {
@@ -605,14 +620,22 @@ function track(m, label = firstOpt(m)) {
 
 const cardTop = m => `<div class="ctop"><span class="cat">${esc(m.category || 'Other')}</span><span>${m.outcome !== null ? statusTag(m) : esc(whenLeft(m.end_date))}</span></div>`;
 
+// Yes/No: one column per forecaster (crowd first), height = chance of Yes, the number on top.
 function yesNoCard(m) {
-  const c = crowdOf(m);
+  const who = ['market', ...modelsOf(m)];
+  const col = k => {
+    const p = k === 'market' ? crowdOf(m) : m.predictions[k].p;
+    if (p == null) return '';
+    return `<div class="col${k === 'market' ? ' crowd' : sideClass(p, m.outcome)}" style="--c:${colorOf(k)}"
+        data-tip="<b>${k === 'market' ? 'crowd' : esc(k)}</b> · ${pct(p)} Yes">
+      <div class="cbox"><span class="cval" style="bottom:${p * 100}%">${pct(p)}</span><div class="cbar" style="height:${p * 100}%"></div></div>
+      <div class="cname">${k === 'market' ? 'crowd' : esc(k)}</div></div>`;
+  };
   return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
     ${cardTop(m)}
     <div class="ttl">${esc(m.question)}</div>
-    <div class="headline"><b>${c == null ? '–' : pct(c)}</b><span>crowd says Yes</span></div>
-    ${track(m, 'Yes')}
-    <div class="tends"><span>No</span><span>Yes</span></div>
+    <div class="sub">Chance of Yes${m.outcome !== null ? ` · resolved ${esc(winner(m))}` : ''}</div>
+    <div class="cols"><span class="c50"><span style="background:var(--card);padding:0 3px 0 0;position:relative;top:-1px">50</span></span>${who.map(col).join('')}</div>
   </article>`;
 }
 
@@ -642,7 +665,7 @@ function donutCard(g, items) {
     const verdict = winner && k !== 'market' ? (pick.id === winner.id ? ' hit' : ' miss') : '';
     const tip = shares.map(x => `${esc(x.m ? (x.m.group_title || x.m.question) : 'Other')}: ${pct(x.p)}`).join('<br>');
     return `<div class="dn${verdict}" data-tip="<b>${k === 'market' ? 'crowd' : esc(k)}</b><br>${tip}">
-      ${donut(shares)}<div class="dname">${k === 'market' ? 'crowd' : esc(k)}</div><div class="dpick">${esc(pick.group_title || pick.question)}</div></div>`;
+      ${donut(shares, k === 'market' ? '◎' : initialOf(k))}<div class="dname">${k === 'market' ? 'crowd' : esc(k)}</div><div class="dpick">${esc(pick.group_title || pick.question)}</div></div>`;
   };
   return `<article class="card" tabindex="0" data-id="${esc(head.id)}">
     <div class="ctop"><span class="cat">${esc(head.category || 'Other')}</span><span>${esc(whenLeft(head.end_date))}</span></div>
