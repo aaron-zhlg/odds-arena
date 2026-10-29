@@ -75,6 +75,15 @@ def cmd_demo(args):
     print("Demo data written. Run `odds-arena serve` to view it.")
 
 
+def cmd_check_keys(args):
+    """Make one signed read-only request to confirm the Polymarket US key works."""
+    from .polymarket_us import PolymarketUSClient
+
+    data = PolymarketUSClient().positions()
+    count = len(data) if isinstance(data, list) else len(data.get("positions", data)) if isinstance(data, dict) else "?"
+    print(f"Polymarket US key OK. Signed request succeeded ({count} position entries).")
+
+
 def cmd_serve(args):
     import uvicorn
     uvicorn.run("odds_arena.web.app:app", host=args.host, port=args.port, reload=False)
@@ -90,6 +99,7 @@ def main():
     sp.set_defaults(func=cmd_predict)
 
     sub.add_parser("resolve", help="Check Polymarket for resolved outcomes").set_defaults(func=cmd_resolve)
+    sub.add_parser("check-keys", help="Verify your Polymarket US API key with a signed request").set_defaults(func=cmd_check_keys)
     sub.add_parser("demo", help="Seed fake data for the dashboard").set_defaults(func=cmd_demo)
 
     sp = sub.add_parser("serve", help="Run the leaderboard website")

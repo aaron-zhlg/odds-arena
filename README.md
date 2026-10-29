@@ -26,11 +26,18 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 cp .env.example .env   # add your API keys, choose ODDS_ARENA_MODELS
 
+odds-arena check-keys  # optional: verify your Polymarket US API key
 odds-arena demo        # optional: seed fake resolved markets to preview the page
 odds-arena predict --limit 20
 odds-arena resolve     # run periodically (e.g. daily cron)
 odds-arena serve       # http://127.0.0.1:8000
 ```
+
+## Polymarket US API key
+
+Market data comes from the public Gamma API and needs no key. For authenticated Polymarket US endpoints,
+put `POLYMARKET_KEY_ID` and `POLYMARKET_SECRET_KEY` in `.env` and use `odds_arena.polymarket_us.PolymarketUSClient`,
+which signs each request with Ed25519 as described in the [Polymarket US auth docs](https://docs.polymarket.us/api-reference/authentication).
 
 ## Scoring
 
