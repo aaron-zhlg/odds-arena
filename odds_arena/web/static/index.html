@@ -614,7 +614,14 @@ function whenLeft(end) {
 
 // Every card: the crowd's latest price as the headline number; the charts show only the AI models.
 const nowOf = m => m.price_now ?? crowdOf(m);
-const headline = (p, label, t) => `<div class="headline"><b>${p == null ? '–' : pct(p)}</b><span>crowd says ${esc(label)}${t ? ` · ${ago(t)}` : ''}</span></div>`;
+// When that price is from: the latest sync, or (before the first sync) when it was recorded with the predictions.
+const nowAt = m => m.price_at ?? (m.predictions.market?.at ? utcTs(m.predictions.market.at) : null);
+// When the AI models answered (latest of their calls on these markets), as "3 h ago".
+const predictedAgo = ms => {
+  const ts = ms.flatMap(m => modelsOf(m).map(k => m.predictions[k].at)).filter(Boolean).map(utcTs);
+  return ts.length ? ` · predicted ${ago(Math.max(...ts))}` : '';
+};
+const headline = (p, label, t) => `<div class="headline"><b>${p == null ? '–' : pct(p)}</b><span>crowd says ${esc(label)}${t ? ` · updated ${ago(t)}` : ''}</span></div>`;
 
 // One 0-100% track for an option, AI models only: each a lettered dot at its chance (three lanes so
 // close calls don't hide each other). Exact numbers are on hover and in the detail.
@@ -647,8 +654,8 @@ function yesNoCard(m) {
   return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
     ${cardTop(m)}
     <div class="ttl">${esc(m.question)}</div>
-    ${m.outcome !== null ? `<div class="sub">Resolved ${esc(winner(m))}</div>` : headline(nowOf(m), 'Yes', m.price_at)}
-    <div class="sub">AI models · chance of Yes</div>
+    ${m.outcome !== null ? `<div class="sub">Resolved ${esc(winner(m))}</div>` : headline(nowOf(m), 'Yes', nowAt(m))}
+    <div class="sub">AI models · chance of Yes${predictedAgo([m])}</div>
     ${columns(m, 'Yes')}
   </article>`;
 }
@@ -659,8 +666,8 @@ function matchupCard(m) {
   return `<article class="card" tabindex="0" data-id="${esc(m.id)}">
     ${cardTop(m)}
     <div class="ttl">${esc(m.question)}</div>
-    ${m.outcome !== null ? `<div class="sub">Resolved ${esc(winner(m))}</div>` : headline(lead.p, lead.name, m.price_at)}
-    <div class="sub">AI models · chance of ${esc(a)} (vs ${esc(b)})</div>
+    ${m.outcome !== null ? `<div class="sub">Resolved ${esc(winner(m))}</div>` : headline(lead.p, lead.name, nowAt(m))}
+    <div class="sub">AI models · chance of ${esc(a)} (vs ${esc(b)})${predictedAgo([m])}</div>
     ${columns(m, a)}
   </article>`;
 }
@@ -686,7 +693,8 @@ function donutCard(g, items) {
   return `<article class="card" tabindex="0" data-id="${esc(head.id)}">
     <div class="ctop"><span class="cat">${esc(head.category || 'Other')}</span><span>${esc(whenLeft(head.end_date))}</span></div>
     <div class="ttl">${esc(g.title || head.question)}</div>
-    ${winner ? `<div class="sub">Won by ${esc(winner.group_title || winner.question)}</div>` : headline(nowOf(crowdTop), crowdTop.group_title || crowdTop.question, crowdTop.price_at)}
+    ${winner ? `<div class="sub">Won by ${esc(winner.group_title || winner.question)}</div>` : headline(nowOf(crowdTop), crowdTop.group_title || crowdTop.question, nowAt(crowdTop))}
+    <div class="sub">AI models · who wins${predictedAgo(items)}</div>
     <div class="olegend">${opts.map(o => `<span><i style="background:${o.color}"></i>${esc(o.m.group_title || o.m.question)}</span>`).join('')}${rest.length ? `<span><i style="background:${OTHER_COLOR}"></i>${rest.length} other${rest.length > 1 ? 's' : ''}</span>` : ''}</div>
     ${ai.length ? `<div class="donuts">${ai.map(chart).join('')}</div>` : '<div class="sub">No AI calls yet</div>'}
   </article>`;
@@ -703,7 +711,7 @@ function eventCard(g) {
   return `<article class="card" tabindex="0" data-id="${esc(items[0].id)}">
     <div class="ctop"><span class="cat">${esc(head.category || 'Other')}</span><span>${esc(whenLeft(head.end_date))}</span></div>
     <div class="ttl">${esc(g.title || items[0].question)}</div>
-    <div class="sub">${items.length} options · each can happen · dots are AI models</div>
+    <div class="sub">${items.length} options · each can happen · dots are AI models${predictedAgo(items)}</div>
     <div class="orows">${items.slice(0, 3).map(row).join('')}</div>
     ${items.length > 3 ? `<div class="more-opts">+${items.length - 3} more options</div>` : ''}
   </article>`;

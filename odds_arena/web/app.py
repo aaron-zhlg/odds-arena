@@ -43,7 +43,7 @@ def api_markets(limit: int = 50):
                       category FROM markets ORDER BY COALESCE(resolved_at, end_date) DESC LIMIT ?""",
             (limit,),
         ).fetchall()
-        preds = conn.execute("SELECT market_id, model, probability, rationale FROM predictions").fetchall()
+        preds = conn.execute("SELECT market_id, model, probability, rationale, created_at FROM predictions").fetchall()
         # The crowd's latest price, kept current by the resolve job (every few minutes), vs. the snapshot
         # stored with the predictions, which is what models are scored against.
         latest = {r["market_id"]: (r["p"], r["t"]) for r in conn.execute(
@@ -52,7 +52,8 @@ def api_markets(limit: int = 50):
                  ON l.market_id = pp.market_id AND l.t = pp.t""").fetchall()}
     by_market: dict[str, dict] = {}
     for p in preds:
-        by_market.setdefault(p["market_id"], {})[p["model"]] = {"p": p["probability"], "rationale": p["rationale"]}
+        by_market.setdefault(p["market_id"], {})[p["model"]] = {"p": p["probability"], "rationale": p["rationale"],
+                                                                "at": p["created_at"]}
     return [_market_json(m) | {"predictions": by_market.get(m["id"], {}),
                                 "price_now": latest.get(m["id"], (None, None))[0],
                                 "price_at": latest.get(m["id"], (None, None))[1]} for m in markets]
