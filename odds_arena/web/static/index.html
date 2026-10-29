@@ -298,7 +298,7 @@
   <header id="home-header">
     <span class="eyebrow"><span class="live"></span>Polymarket · live forecasting league</span>
     <h1>Odds Arena</h1>
-    <p class="tagline">Decision models make their calls on real Polymarket questions. Once the markets resolve, the scoreboard shows which model is right.</p>
+    <p class="tagline">AI models make their calls on real Polymarket questions, each after reading the same fresh web search results. Once the markets resolve, the scoreboard shows which model is right.</p>
     <div class="stats">
       <div class="stat"><b class="mono" data-count="models">0</b><span>AI models</span></div>
       <div class="stat"><b class="mono" data-count="predictions">0</b><span>Predictions</span></div>
@@ -354,7 +354,7 @@
 const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 const FIXED = { market: '#3c4150', coinflip: '#b4b8c2' };
 const SLOT_ORDER = ['openai', 'typesafe', 'perplexity'];
-// "<model>+search" is the same model given web results: same colour, drawn hollow.
+// Legacy "<model>+search" names (before every AI model searched) map to the model's colour.
 const baseOf = m => m.replace(/\+search$/, '');
 const isSearch = m => /\+search$/.test(m);
 const colors = {};
@@ -617,8 +617,8 @@ function renderDetail(d) {
   ].filter(Boolean).join('');
 
   const search = !d.search
-    ? '<p class="src-meta">Web search is off for this question: no search-enabled model (name ending in <span class="mono">+search</span>) has predicted it yet, so nothing was searched. Search runs once per new question as soon as such a model is enabled.</p>'
-    : `<p class="src-meta">Query <span class="mono">"${esc(d.search.query)}"</span> · fetched ${esc(d.search.created_at)} · ${d.search.results.length} sources. Every <span class="mono">+search</span> model received exactly this list.</p>` +
+    ? '<p class="src-meta">No web search stored for this question yet. It runs once, before the AI models make their first calls on it.</p>'
+    : `<p class="src-meta">Query <span class="mono">"${esc(d.search.query)}"</span> · fetched ${esc(d.search.created_at)} · ${d.search.results.length} sources. Every AI model received exactly this list before predicting.</p>` +
       (d.search.results.length ? d.search.results.map(s => `<div class="src">
         <div class="head"><b>${esc(s.title)}</b><span class="mono">${esc(s.published)}</span></div>
         <div class="host mono">${esc(s.source)}</div>
@@ -704,7 +704,8 @@ function renderDetail(d) {
     ${d.description ? `<details><summary>Resolution rules</summary><p>${esc(d.description)}</p></details>` : ''}
     ${isYesNo(d) ? '' : `<p class="src-meta" style="margin-top:12px">Outcomes: <b>${esc(d.outcomes[0])}</b> vs <b>${esc(d.outcomes[1])}</b>. Every percentage below is the chance of <b>${esc(d.outcomes[0])}</b>.</p>`}
     ${splitChart}
-    <h4>Model calls · chance of ${esc(firstOpt(d))}</h4>${preds}
+    <h4>Model calls · chance of ${esc(firstOpt(d))}</h4>
+    <p class="src-meta">Each AI model read the web search results listed at the bottom of this page before answering; none of them saw the market price.</p>${preds}
     ${optTable}
     <h4>Actual result</h4>
     <div class="result-card">${badgeFor(d)}<span style="color:var(--muted)">${resolved ? `Polymarket settled it as <b>${esc(winner(d))}</b> on ${esc((d.resolved_at || '').slice(0, 10))}` : 'Not resolved yet. Scores appear here once Polymarket settles it.'}</span></div>
@@ -885,7 +886,7 @@ async function load() {
   assignColors(allModels);
 
   const counts = {
-    // Distinct AI models: the market baseline isn't one, and <model>+search is the same model with web results.
+    // Distinct AI models: the market baseline isn't one.
     models: new Set(allModels.filter(k => k !== 'market').map(baseOf)).size,
     predictions: markets.reduce((s, m) => s + Object.keys(m.predictions).length, 0),
     resolved: markets.filter(m => m.outcome !== null).length,

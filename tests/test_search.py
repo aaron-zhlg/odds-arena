@@ -31,10 +31,17 @@ def test_query_respects_brave_limits():
     assert len(q.split()) <= 75 and len(q) <= 600
 
 
-def test_load_search_variant():
-    plain, searched = load_models(["coinflip", "coinflip+search"])
-    assert (plain.name, plain.uses_search) == ("coinflip", False)
-    assert (searched.name, searched.uses_search) == ("coinflip+search", True)
+def test_ai_models_search_and_old_suffix_maps_to_the_same_model(monkeypatch):
+    from odds_arena.models import REGISTRY
+    from odds_arena.models.base import DecisionModel as DM
+
+    class Fake(DM):
+        name = "fake"
+        def predict(self, market, context=None): ...
+
+    monkeypatch.setitem(REGISTRY, "fake", Fake)
+    models = load_models(["market", "fake", "fake+search"])
+    assert [(m.name, m.uses_search) for m in models] == [("market", False), ("fake", True)]  # deduped, AI searches
 
 
 class Recorder(DecisionModel):
