@@ -1,0 +1,38 @@
+# Hourly predict + resolve. Vercel's Hobby plan only allows daily cron jobs, so GitHub calls the
+# same CRON_SECRET-protected endpoints instead. Only this repo's schedule and people with write
+# access (manual "Run workflow") can start it; forks don't receive the secret.
+name: Hourly predict & resolve
+
+on:
+  schedule:
+    - cron: "7 * * * *"  # minute 7: top-of-the-hour schedules are the most delayed on GitHub
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: odds-arena-cron
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SITE: https://odds-arena-theta.vercel.app
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Check secret
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Add the CRON_SECRET repository secret (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+      - name: Predict new markets
+        run: |
+          curl --fail-with-body -sS -m 330 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/predict"
+      - name: Resolve outcomes and sync prices
+        if: always()
+        run: |
+          curl --fail-with-body -sS -m 330 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/resolve"
