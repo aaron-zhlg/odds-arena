@@ -18,6 +18,8 @@ class DecisionModel(ABC):
     name: str = "base"
     # Models that peek at the live market price are flagged so the leaderboard can tell them apart.
     uses_market_price: bool = False
+    # Search-enabled models get `context`: the same filtered web results for every such model.
+    uses_search: bool = False
 
     @abstractmethod
-    def predict(self, market: Market) -> Prediction: ...
+    def predict(self, market: Market, context: list[dict] | None = None) -> Prediction: ...

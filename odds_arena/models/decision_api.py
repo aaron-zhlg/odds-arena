@@ -25,8 +25,8 @@ QUESTION = {
 }
 
 
-def build_request(market, model: str, today: date | None = None) -> dict:
-    return {
+def build_request(market, model: str, today: date | None = None, context: list[dict] | None = None) -> dict:
+    req = {
         "model": model,
         "state": {
             "question": market.question,
@@ -36,6 +36,9 @@ def build_request(market, model: str, today: date | None = None) -> dict:
         },
         "questions": {"resolves_yes": QUESTION},
     }
+    if context is not None:
+        req["state"]["search_results"] = context
+    return req
 
 
 class DecisionAPIModel(DecisionModel):
@@ -62,8 +65,8 @@ class DecisionAPIModel(DecisionModel):
             return r.json()
         raise RuntimeError("unreachable")
 
-    def predict(self, market):
-        self.last_request = build_request(market, self.model)
+    def predict(self, market, context=None):
+        self.last_request = build_request(market, self.model, context=context)
         data = self._post(self.last_request)
         p = float(data["answers"]["resolves_yes"]["noul"])
         return Prediction(p, f"{self.label} {data.get('model', self.model)} noul")

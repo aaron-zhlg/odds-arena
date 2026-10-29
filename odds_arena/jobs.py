@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 from typing import Callable
 
-from . import db, polymarket
+from . import db, polymarket, search
 from .config import ENABLED_MODELS
 from .models import load_models
 
@@ -29,14 +29,26 @@ def run_predict(limit: int = 20, model_names: list[str] | None = None, within_da
                 "INSERT INTO markets (id, question, end_date) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING",
                 (m.id, m.question, m.end_date),
             )
+            context, search_error = None, None  # fetched at most once per market, shared by all search models
             for model in models:
                 if deadline and time.monotonic() > deadline:
                     timed_out = True
                     break
                 if conn.execute("SELECT 1 FROM predictions WHERE market_id=? AND model=?", (m.id, model.name)).fetchone():
                     continue
+                if model.uses_search and context is None:
+                    if search_error is None:
+                        try:
+                            context = search.search_context(m.question)
+                            log(f"  [search] {len(context)} sources  {m.question[:60]}")
+                        except Exception as e:
+                            search_error = e
+                            log(f"  [search] failed on {m.id}: {e}")
+                    if search_error is not None:  # no search context: skip rather than predict without it
+                        failed += 1
+                        continue
                 try:
-                    pred = model.predict(m)
+                    pred = model.predict(m, context if model.uses_search else None)
                 except Exception as e:  # one failing model shouldn't stop the others
                     failed += 1
                     log(f"  [{model.name}] failed on {m.id}: {e}")

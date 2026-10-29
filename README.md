@@ -18,6 +18,12 @@ Decision models forecast [Polymarket](https://polymarket.com) questions. Once ma
 | `typesafe` | Asks TypeSafe's Jev one Noul question (P resolves Yes), without the price; set `TYPESAFE_API_KEY` |
 | `perplexity` | Same question via Perplexity's Decisions API (`pplx-decider-latest`); set `PERPLEXITY_API_KEY` |
 
+**Web search context.** Add `+search` to any model name (e.g. `typesafe+search`) to enter it again with
+Brave LLM Context results (`BRAVE_API_KEY`). Each market is searched once and every `+search` model gets the
+identical results. Prediction-market sites (Polymarket, Kalshi, …) and any snippet mentioning one are removed,
+so no model sees the crowd's odds. `SEARCH_MAX_TOKENS` defaults to 8192 and is capped at 16384 to stay inside
+Jev's 32k per-question limit.
+
 Add a model: subclass `DecisionModel` in `odds_arena/models/`, implement `predict(market) -> Prediction`, and register it in `odds_arena/models/__init__.py`.
 
 ## Quick start

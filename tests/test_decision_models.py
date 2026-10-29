@@ -43,3 +43,10 @@ def test_failed_call_raises_not_no(monkeypatch):
     monkeypatch.setattr(decision_api.httpx, "post", lambda u, **kw: httpx.Response(500, request=httpx.Request("POST", u)))
     with pytest.raises(httpx.HTTPStatusError):
         PerplexityModel(api_key="k").predict(MARKET)
+
+
+def test_search_context_goes_into_state():
+    ctx = [{"source": "www.reuters.com", "title": "t", "published": "2026-10-27", "snippets": ["s"]}]
+    req = decision_api.build_request(MARKET, "m", today=date(2026, 10, 28), context=ctx)
+    assert req["state"]["search_results"] is ctx
+    assert "search_results" not in decision_api.build_request(MARKET, "m")["state"]

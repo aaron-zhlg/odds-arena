@@ -27,11 +27,21 @@ REGISTRY = {
 }
 
 
+SEARCH_SUFFIX = "+search"
+
+
 def load_models(names: list[str]) -> list[DecisionModel]:
-    unknown = [n for n in names if n not in REGISTRY]
+    """`<name>+search` enters the same model again, this time given web search context."""
+    unknown = [n for n in names if n.removesuffix(SEARCH_SUFFIX) not in REGISTRY]
     if unknown:
-        raise ValueError(f"Unknown model(s): {unknown}. Available: {list(REGISTRY)}")
-    return [REGISTRY[n]() for n in names]
+        raise ValueError(f"Unknown model(s): {unknown}. Available: {list(REGISTRY)} (each also as <name>{SEARCH_SUFFIX})")
+    models = []
+    for n in names:
+        model = REGISTRY[n.removesuffix(SEARCH_SUFFIX)]()
+        if n.endswith(SEARCH_SUFFIX):
+            model.name, model.uses_search = n, True
+        models.append(model)
+    return models
 
 
 __all__ = ["DecisionModel", "Prediction", "REGISTRY", "load_models"]
