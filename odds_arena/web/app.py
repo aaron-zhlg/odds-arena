@@ -14,7 +14,9 @@ STATIC = Path(__file__).parent / "static"
 app = FastAPI(title="Odds Arena")
 
 # Cron runs must finish inside the serverless time limit; jobs stop starting new work after this.
-CRON_TIME_BUDGET = float(os.getenv("CRON_TIME_BUDGET", "45"))
+# Vercel functions run up to 300 s by default; stop starting new work well before that. Each event is
+# committed as soon as it's done, so a run cut short loses nothing.
+CRON_TIME_BUDGET = float(os.getenv("CRON_TIME_BUDGET", "240"))
 
 
 @app.get("/")
@@ -141,7 +143,7 @@ def cron_predict(authorization: str | None = Header(default=None)):
     _check_cron_auth(authorization)
     return _run_job(
         jobs.run_predict,
-        limit=int(os.getenv("CRON_PREDICT_LIMIT", "10")),
+        limit=int(os.getenv("CRON_PREDICT_LIMIT", "50")),  # questions per run: the whole hot list if time allows
         within_days=float(os.getenv("CRON_WITHIN_DAYS", "30")) or None,
         time_budget=CRON_TIME_BUDGET,
     )

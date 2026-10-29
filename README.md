@@ -79,7 +79,7 @@ Add these in Vercel → Settings → Environment Variables, then redeploy:
 
 - `CRON_SECRET`: random string (`openssl rand -hex 32`); the endpoints refuse every call without it
 - `OPENAI_API_KEY`, `ODDS_ARENA_MODELS` (e.g. `market,coinflip,openai`), optionally `OPENAI_MODEL`
-- optional: `CRON_PREDICT_LIMIT` (default 10 markets), `CRON_WITHIN_DAYS` (default 30, 0 = any end date), `CRON_TIME_BUDGET` (default 45 s)
+- optional: `CRON_PREDICT_LIMIT` (default 50 questions), `CRON_WITHIN_DAYS` (default 30, 0 = any end date), `CRON_TIME_BUDGET` (default 240 s)
 
 Each run stops starting new work once the time budget is used and commits as it goes, so the next run continues.
 
