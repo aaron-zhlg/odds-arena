@@ -37,28 +37,106 @@ def api_leaderboard():
     return {"leaderboard": leaderboard((r["model"], r["probability"], r["outcome"]) for r in rows), "pending_markets": pending}
 
 
-@app.get("/api/markets")
-def api_markets(limit: int = 50):
-    with db.connect() as conn:
-        markets = conn.execute(
-            """SELECT id, question, end_date, outcome, outcomes, event_id, event_title, event_slug, group_title, neg_risk,
-                      category FROM markets ORDER BY COALESCE(resolved_at, end_date) DESC LIMIT ?""",
-            (limit,),
-        ).fetchall()
-        preds = conn.execute("SELECT market_id, model, probability, rationale, created_at FROM predictions").fetchall()
-        # The crowd's latest price, kept current by the resolve job (every few minutes), vs. the snapshot
-        # stored with the predictions, which is what models are scored against.
-        latest = {r["market_id"]: (r["p"], r["t"]) for r in conn.execute(
-            """SELECT pp.market_id, pp.p, pp.t FROM price_points pp
-               JOIN (SELECT market_id, MAX(t) AS t FROM price_points GROUP BY market_id) l
-                 ON l.market_id = pp.market_id AND l.t = pp.t""").fetchall()}
+MARKET_COLS = """id, question, end_date, outcome, outcomes, event_id, event_title, event_slug, group_title, neg_risk,
+                 category"""
+
+
+def _in(ids) -> str:
+    return ",".join("?" * len(ids)) or "NULL"
+
+
+def _with_predictions(conn, markets, rationale: bool = True) -> list[dict]:
+    """Markets as JSON with their predictions and latest synced price, querying only these markets.
+    Cards don't show rationales (the detail does), so list pages can leave them out."""
+    ids = [m["id"] for m in markets]
+    if not ids:
+        return []
     by_market: dict[str, dict] = {}
-    for p in preds:
-        by_market.setdefault(p["market_id"], {})[p["model"]] = {"p": p["probability"], "rationale": p["rationale"],
-                                                                "at": p["created_at"]}
+    for p in conn.execute(f"SELECT market_id, model, probability, rationale, created_at FROM predictions WHERE market_id IN ({_in(ids)})", ids).fetchall():
+        by_market.setdefault(p["market_id"], {})[p["model"]] = {"p": p["probability"], "at": p["created_at"]} | (
+            {"rationale": p["rationale"]} if rationale else {})
+    # The crowd's latest price, kept current by the resolve job (every few minutes), vs. the snapshot
+    # stored with the predictions, which is what models are scored against.
+    latest = {r["market_id"]: (r["p"], r["t"]) for r in conn.execute(
+        f"""SELECT pp.market_id, pp.p, pp.t FROM price_points pp
+            JOIN (SELECT market_id, MAX(t) AS t FROM price_points WHERE market_id IN ({_in(ids)}) GROUP BY market_id) l
+              ON l.market_id = pp.market_id AND l.t = pp.t""", ids).fetchall()}
     return [_market_json(m) | {"predictions": by_market.get(m["id"], {}),
                                 "price_now": latest.get(m["id"], (None, None))[0],
                                 "price_at": latest.get(m["id"], (None, None))[1]} for m in markets]
+
+
+@app.get("/api/markets")
+def api_markets(limit: int = 50, resolved: bool = False):
+    """Markets with predictions; `resolved=1` for settled ones only (what the calibration chart needs)."""
+    with db.connect() as conn:
+        markets = conn.execute(
+            f"""SELECT {MARKET_COLS} FROM markets {"WHERE outcome IS NOT NULL" if resolved else ""}
+                ORDER BY COALESCE(resolved_at, end_date) DESC LIMIT ?""",
+            (min(limit, 5000),),
+        ).fetchall()
+        return _with_predictions(conn, markets)
+
+
+# A question is one card: a Polymarket event (its options grouped), or a market saved before events were.
+QUESTION_KEY = "COALESCE(event_id, id)"
+
+
+@app.get("/api/questions")
+def api_questions(category: str | None = None, status: str = "all", q: str = "", offset: int = 0, limit: int = 30):
+    """One page of questions, filtered and searched server-side. `status`: all | open | resolved (any option
+    settled). Order: open before settled, then categories interleaved (soonest-closing first within each) so
+    one topic doesn't fill a page."""
+    limit = max(1, min(limit, 100))
+    where, params = [], []
+    if category:
+        where.append("COALESCE(category, 'Other') = ?"); params.append(category)
+    if q.strip():
+        like = f"%{q.strip().lower()}%"
+        where.append("(LOWER(question) LIKE ? OR LOWER(COALESCE(group_title, '')) LIKE ? OR LOWER(COALESCE(event_title, '')) LIKE ?)")
+        params += [like, like, like]
+    having = {"open": "HAVING SUM(CASE WHEN outcome IS NOT NULL THEN 1 ELSE 0 END) = 0",
+              "resolved": "HAVING SUM(CASE WHEN outcome IS NOT NULL THEN 1 ELSE 0 END) > 0"}.get(status, "")
+    with db.connect() as conn:
+        groups = conn.execute(
+            f"""SELECT {QUESTION_KEY} AS qk, COALESCE(MAX(category), 'Other') AS category, MIN(end_date) AS end_date,
+                       SUM(CASE WHEN outcome IS NOT NULL THEN 1 ELSE 0 END) AS settled
+                FROM markets {"WHERE " + " AND ".join(where) if where else ""}
+                GROUP BY {QUESTION_KEY} {having}""", params).fetchall()
+        # Interleave categories so the first page is a mix; settled questions after open ones.
+        buckets: dict[tuple, list] = {}
+        for g in sorted(groups, key=lambda g: g["end_date"] or "9"):
+            buckets.setdefault((g["settled"] > 0, g["category"]), []).append(g["qk"])
+        ordered = []
+        for done in (False, True):
+            lanes = [v for (d, _), v in buckets.items() if d == done]
+            for i in range(max((len(v) for v in lanes), default=0)):
+                ordered += [v[i] for v in lanes if i < len(v)]
+        page = ordered[offset:offset + limit]
+        markets = conn.execute(
+            f"SELECT {MARKET_COLS} FROM markets WHERE {QUESTION_KEY} IN ({_in(page)})", page).fetchall() if page else []
+        items = _with_predictions(conn, markets, rationale=False)
+    by_q: dict[str, list] = {}
+    for m in items:
+        by_q.setdefault(m["event_id"] or m["id"], []).append(m)
+    questions = [{"key": k, "title": by_q[k][0]["event_title"] or by_q[k][0]["question"], "items": by_q[k]}
+                 for k in page if k in by_q]
+    return {"total": len(ordered), "offset": offset, "limit": limit, "questions": questions}
+
+
+@app.get("/api/meta")
+def api_meta():
+    """Small facts for the page chrome: question counts per category, resolved count, and the models."""
+    with db.connect() as conn:
+        cats = conn.execute(
+            f"SELECT COALESCE(category, 'Other') AS c, COUNT(DISTINCT {QUESTION_KEY}) AS n FROM markets GROUP BY COALESCE(category, 'Other')"
+        ).fetchall()
+        resolved = conn.execute(f"SELECT COUNT(DISTINCT {QUESTION_KEY}) AS n FROM markets WHERE outcome IS NOT NULL").fetchone()["n"]
+        models = [r["model"] for r in conn.execute("SELECT DISTINCT model FROM predictions").fetchall()]
+        next_close = conn.execute("SELECT MIN(end_date) AS d FROM markets WHERE outcome IS NULL AND end_date >= ?",
+                                  (db.now()[:10],)).fetchone()["d"]
+    return {"categories": {r["c"]: r["n"] for r in cats}, "resolved": resolved, "models": sorted(models),
+            "next_close": next_close}
 
 
 def _market_json(row) -> dict:

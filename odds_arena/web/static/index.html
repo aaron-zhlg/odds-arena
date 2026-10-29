@@ -369,6 +369,7 @@
     <div class="legend-bar" id="legend-bar"></div>
     <div class="toolbar"><div class="filters" id="filters"></div><input id="search" class="search" type="search" placeholder="Search questions, options, events" hidden></div>
     <div class="cards" id="markets"></div>
+    <div id="list-end" aria-hidden="true"></div>
     <a class="chip more" id="more" href="/markets">View all questions →</a>
   </section>
 
@@ -540,8 +541,12 @@ function renderCalibration(markets, models) {
 // "/markets" is the full list; the home page shows the latest few groups and links there.
 const LIST_PAGE = location.pathname.replace(/\/+$/, '') === '/markets';
 const HOME_GROUPS = 9;
-let allMarkets = [], allModels = [], filter = 'all', query = '';
-const shown = LIST_PAGE ? Infinity : HOME_GROUPS;
+// Questions are paged by the server (/api/questions): the home page asks for one page, the list page
+// keeps loading pages as you scroll. Filters and search are applied server-side.
+let allModels = [], meta = { categories: {}, resolved: 0, models: [], next_close: null };
+let filter = 'all', query = '', groups = [], total = 0, loading = false, loadSeq = 0;
+const PAGE = LIST_PAGE ? 30 : HOME_GROUPS;
+const HIDDEN = new Set(['coinflip']);  // always 50%: the Brier note and skill column already compare against it
 const MODEL_INFO = {
   market: 'The crowd: the Polymarket price when the AI models made their calls',
   coinflip: 'Baseline: always 50%. Anything useful should beat it',
@@ -741,39 +746,43 @@ function renderLegend() {
     `<span class="muted">AI models use web search results as context</span>`;
 }
 
+async function loadQuestions(reset) {
+  if (loading && !reset) return;
+  const seq = ++loadSeq;
+  loading = true;
+  const params = new URLSearchParams({ offset: reset ? 0 : groups.length, limit: PAGE });
+  if (filter === 'resolved') params.set('status', 'resolved');
+  else if (filter !== 'all') params.set('category', filter);
+  if (query.trim()) params.set('q', query.trim());
+  try {
+    const page = await fetch(`/api/questions?${params}`).then(r => r.json());
+    if (seq !== loadSeq) return;  // a newer filter or search replaced this request
+    page.questions.forEach(g => g.items.forEach(m => HIDDEN.forEach(k => delete m.predictions[k])));
+    groups = reset ? page.questions : groups.concat(page.questions);
+    total = page.total;
+    renderMarkets();
+  } finally {
+    if (seq === loadSeq) loading = false;
+  }
+}
+
 function renderMarkets() {
   const el = document.getElementById('markets');
-  const q = query.trim().toLowerCase();
-  const all = allMarkets.filter(m => (filter === 'all' || (filter === 'resolved' ? m.outcome !== null : (m.category || 'Other') === filter))
-    && (!q || [m.question, m.group_title, m.event_title, ...(m.outcomes || [])].some(t => (t || '').toLowerCase().includes(q))));
-  // Options of one multi-option event share a card; a market alone in its event gets its own card.
-  const groups = [], byEvent = {};
-  all.forEach(m => {
-    const key = m.event_id && all.filter(x => x.event_id === m.event_id).length > 1 ? 'e' + m.event_id : 'm' + m.id;
-    if (!byEvent[key]) groups.push(byEvent[key] = { key, title: m.event_title, items: [] });
-    byEvent[key].items.push(m);
-  });
-  // Mix categories (round robin, soonest-closing first within each) so no single topic fills the page.
-  const byCat = {};
-  groups.forEach(g => (byCat[g.items[0].category || 'Other'] ||= []).push(g));
-  Object.values(byCat).forEach(gs => gs.sort((a, b) => (a.items[0].end_date || '9').localeCompare(b.items[0].end_date || '9')));
-  const mixed = [];
-  for (let i = 0; mixed.length < groups.length; i++) Object.values(byCat).forEach(gs => gs[i] && mixed.push(gs[i]));
-  const list = mixed.slice(0, shown);
   const more = document.getElementById('more');
   more.style.display = LIST_PAGE ? 'none' : '';  // always offer the full list (with search), even when it all fits
-  more.textContent = `View all ${groups.length} questions →`;  // a question = one card (a Polymarket event)
-  if (LIST_PAGE) document.getElementById('markets-title').textContent = `All questions · ${groups.length}`;
-  if (!list.length) {
+  const allCount = Object.values(meta.categories).reduce((t, n) => t + n, 0);
+  more.textContent = `View all ${allCount} questions →`;  // a question = one card (a Polymarket event)
+  if (LIST_PAGE) document.getElementById('markets-title').textContent = `All questions · ${total}`;
+  if (!groups.length) {
     let note = 'No questions here yet.';
     if (filter === 'resolved') {
-      const next = allMarkets.map(m => m.end_date).filter(Boolean).sort()[0];
+      const next = meta.next_close;
       note = `No question has resolved yet.${next ? ` The first ones close around <b>${esc(new Date(next).toLocaleDateString([], { month: 'short', day: 'numeric' }))}</b>; results and scores show up here once Polymarket settles them.` : ''}`;
     }
     el.innerHTML = `<div class="empty">${note}</div>`;
     return;
   }
-  el.innerHTML = list.map(g => g.items.length > 1 ? eventCard(g) : isYesNo(g.items[0]) ? yesNoCard(g.items[0]) : matchupCard(g.items[0])).join('');
+  el.innerHTML = groups.map(g => g.items.length > 1 ? eventCard(g) : isYesNo(g.items[0]) ? yesNoCard(g.items[0]) : matchupCard(g.items[0])).join('');
 }
 
 // ---- Market detail: opened via #market/<id>, so links are shareable and Back closes it ----
@@ -1028,12 +1037,12 @@ document.getElementById('markets').addEventListener('keydown', e => {
 
 function renderFilters() {
   const order = ['Politics', 'Sports', 'Crypto', 'Finance', 'Tech', 'Geopolitics', 'Culture', 'Weather', 'Other'];
-  const present = new Set(allMarkets.map(m => m.category || 'Other'));
+  const present = new Set(Object.keys(meta.categories));
   // "Resolved" is always offered: it's where finished questions and their scores live.
   const opts = [['all', 'All'], ...order.filter(c => present.has(c)).map(c => [c, c]), ['resolved', 'Resolved ✓']];
   const el = document.getElementById('filters');
   el.innerHTML = opts.map(([k, l]) => `<button class="chip${k === 'resolved' ? ' res' : ''}${k === filter ? ' on' : ''}" data-f="${k}">${l}</button>`).join('');
-  el.onclick = e => { const f = e.target.dataset.f; if (f) { filter = f; renderFilters(); renderMarkets(); } };
+  el.onclick = e => { const f = e.target.dataset.f; if (f) { filter = f; renderFilters(); loadQuestions(true); } };
 }
 
 if (LIST_PAGE) {
@@ -1043,32 +1052,38 @@ if (LIST_PAGE) {
   document.getElementById('search').hidden = false;
   document.getElementById('home-header').hidden = true;
   document.querySelectorAll('main > section:not(#markets-section)').forEach(s => s.hidden = true);
-  document.getElementById('search').addEventListener('input', e => { query = e.target.value; renderMarkets(); });
+  let typing;  // search after a short pause, not on every keystroke
+  document.getElementById('search').addEventListener('input', e => {
+    clearTimeout(typing);
+    typing = setTimeout(() => { query = e.target.value; loadQuestions(true); }, 300);
+  });
+  // Load the next page when the end of the list scrolls into view.
+  new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting && groups.length < total) loadQuestions(false);
+  }, { rootMargin: '600px' }).observe(document.getElementById('list-end'));
 }
 
 async function load() {
-  const [lb, markets] = await Promise.all([
+  const [lb, m, resolved] = await Promise.all([
     fetch('/api/leaderboard').then(r => r.json()),
-    fetch('/api/markets?limit=1000').then(r => r.json()),
+    fetch('/api/meta').then(r => r.json()),
+    fetch('/api/markets?resolved=1&limit=5000').then(r => r.json()),  // settled markets only, for calibration
   ]);
-  // coinflip (always 50%) adds nothing on the page: the Brier note and the skill column already compare against 0.25.
-  const HIDDEN = new Set(['coinflip']);
+  meta = m;
   const board = lb.leaderboard.filter(r => !HIDDEN.has(r.model));
-  markets.forEach(m => HIDDEN.forEach(k => delete m.predictions[k]));
-  allMarkets = markets;
-  // Fixed column order: the market baseline first, then contenders A-Z.
+  resolved.forEach(x => HIDDEN.forEach(k => delete x.predictions[k]));
+  // Fixed order: the crowd first, then the AI models A-Z.
   const rank = k => k === 'market' ? 0 : 1;
-  allModels = [...new Set([...board.map(r => r.model), ...markets.flatMap(m => Object.keys(m.predictions))])]
+  allModels = [...new Set([...board.map(r => r.model), ...meta.models])].filter(k => !HIDDEN.has(k))
     .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   assignColors(allModels);
 
-
   renderPodium(board);
   renderBoard(board);
-  renderCalibration(markets, allModels);
+  renderCalibration(resolved, allModels);
   renderLegend();
   renderFilters();
-  renderMarkets();
+  await loadQuestions(true);
   route();  // open a shared #market/<id> link after colors are known
 }
 load();

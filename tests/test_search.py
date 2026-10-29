@@ -289,3 +289,44 @@ def test_question_kind_rules():
     assert question_kind(["Yes", "No"], False, "e") == "yes_no"        # independent option of an event
     assert question_kind(["Yes", "No"], False, None) == "yes_no"
     assert question_kind(["Lakers", "Celtics"], False, None) == "matchup"
+
+
+def test_questions_api_groups_filters_and_pages(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from odds_arena.web.app import app
+
+    monkeypatch.setattr(db, "DATABASE_URL", None)
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
+    rows = [  # id, event, category, end, question, group
+        ("h1", "house", "Politics", "2026-11-04", "Will Dems win the House?", "Democrats"),
+        ("h2", "house", "Politics", "2026-11-04", "Will GOP win the House?", "Republicans"),
+        ("s1", "nba", "Sports", "2026-10-30", "Lakers vs. Clippers", None),
+        ("c1", "btc", "Crypto", "2026-10-31", "Bitcoin above 80k?", "80,000"),
+        ("p2", "gov", "Politics", "2026-11-03", "Who wins California?", "Becerra"),
+    ]
+    with db.connect() as conn:
+        for i, ev, cat, end, q, grp in rows:
+            conn.execute("INSERT INTO markets (id, event_id, category, end_date, question, group_title, event_title) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (i, ev, cat, end, q, grp, ev.upper()))
+            conn.execute("INSERT INTO predictions (market_id, model, probability) VALUES (?, 'openai', 0.5)", (i,))
+        conn.execute("UPDATE markets SET outcome = 1 WHERE id = 's1'")
+    c = TestClient(app)
+
+    allq = c.get("/api/questions?limit=10").json()
+    assert allq["total"] == 4 and [q["key"] for q in allq["questions"]][-1] == "nba"      # 4 questions, settled last
+    assert {q["key"]: len(q["items"]) for q in allq["questions"]}["house"] == 2            # options grouped
+    assert [q["key"] for q in allq["questions"]][:3] in (["btc", "gov", "house"], ["gov", "btc", "house"])  # categories interleaved
+    house = next(q for q in allq["questions"] if q["key"] == "house")
+    assert house["items"][0]["predictions"]["openai"]["p"] == 0.5
+
+    p1, p2 = (c.get(f"/api/questions?limit=2&offset={o}").json() for o in (0, 2))
+    assert [q["key"] for q in p1["questions"] + p2["questions"]] == [q["key"] for q in allq["questions"]]  # pages tile
+    assert [q["key"] for q in c.get("/api/questions?category=Politics").json()["questions"]] == ["gov", "house"]
+    assert [q["key"] for q in c.get("/api/questions?q=lakers").json()["questions"]] == ["nba"]
+    assert [q["key"] for q in c.get("/api/questions?q=republicans").json()["questions"]] == ["house"]  # option names searched
+    assert [q["key"] for q in c.get("/api/questions?status=resolved").json()["questions"]] == ["nba"]
+    assert c.get("/api/questions?status=open").json()["total"] == 3
+
+    meta = c.get("/api/meta").json()
+    assert {k: meta[k] for k in ("categories", "resolved", "models")} == {"categories": {"Politics": 2, "Sports": 1, "Crypto": 1}, "resolved": 1, "models": ["openai"]}
+    assert [m["id"] for m in c.get("/api/markets?resolved=1").json()] == ["s1"]
