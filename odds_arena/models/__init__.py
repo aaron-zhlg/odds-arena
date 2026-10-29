@@ -13,11 +13,17 @@ def _typesafe():
     return TypesafeModel()
 
 
+def _perplexity():
+    from .perplexity_model import PerplexityModel
+    return PerplexityModel()
+
+
 REGISTRY = {
     "market": MarketPriceModel,
     "coinflip": CoinFlipModel,
     "openai": _openai,
     "typesafe": _typesafe,
+    "perplexity": _perplexity,
 }
 
 
