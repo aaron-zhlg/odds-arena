@@ -761,7 +761,15 @@ function renderMarkets() {
   more.style.display = LIST_PAGE ? 'none' : '';  // always offer the full list (with search), even when it all fits
   more.textContent = `View all ${groups.length} questions →`;  // a question = one card (a Polymarket event)
   if (LIST_PAGE) document.getElementById('markets-title').textContent = `All questions · ${groups.length}`;
-  if (!list.length) { el.innerHTML = '<div class="empty">No markets here yet.</div>'; return; }
+  if (!list.length) {
+    let note = 'No questions here yet.';
+    if (filter === 'resolved') {
+      const next = allMarkets.map(m => m.end_date).filter(Boolean).sort()[0];
+      note = `No question has resolved yet.${next ? ` The first ones close around <b>${esc(new Date(next).toLocaleDateString([], { month: 'short', day: 'numeric' }))}</b>; results and scores show up here once Polymarket settles them.` : ''}`;
+    }
+    el.innerHTML = `<div class="empty">${note}</div>`;
+    return;
+  }
   el.innerHTML = list.map(g => g.items.length > 1 ? eventCard(g) : isYesNo(g.items[0]) ? yesNoCard(g.items[0]) : matchupCard(g.items[0])).join('');
 }
 
@@ -1018,8 +1026,8 @@ document.getElementById('markets').addEventListener('keydown', e => {
 function renderFilters() {
   const order = ['Politics', 'Sports', 'Crypto', 'Finance', 'Tech', 'Geopolitics', 'Culture', 'Weather', 'Other'];
   const present = new Set(allMarkets.map(m => m.category || 'Other'));
-  const opts = [['all', 'All'], ...order.filter(c => present.has(c)).map(c => [c, c]),
-                ...(allMarkets.some(m => m.outcome !== null) ? [['resolved', 'Resolved']] : [])];
+  // "Resolved" is always offered: it's where finished questions and their scores live.
+  const opts = [['all', 'All'], ...order.filter(c => present.has(c)).map(c => [c, c]), ['resolved', 'Resolved ✓']];
   const el = document.getElementById('filters');
   el.innerHTML = opts.map(([k, l]) => `<button class="chip ${k === filter ? 'on' : ''}" data-f="${k}">${l}</button>`).join('');
   el.onclick = e => { const f = e.target.dataset.f; if (f) { filter = f; renderFilters(); renderMarkets(); } };
