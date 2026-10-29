@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .. import db, jobs
 from ..scoring import brier, leaderboard
@@ -116,10 +116,20 @@ def _check_cron_auth(authorization: str | None):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+def _run_job(fn, **kwargs):
+    # Cron callers can't see server logs, so say what went wrong. Messages name settings (model names,
+    # env var names), never their values, and only callers holding CRON_SECRET get this far.
+    try:
+        return fn(**kwargs)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"{type(e).__name__}: {e}"})
+
+
 @app.get("/api/cron/predict")
 def cron_predict(authorization: str | None = Header(default=None)):
     _check_cron_auth(authorization)
-    return jobs.run_predict(
+    return _run_job(
+        jobs.run_predict,
         limit=int(os.getenv("CRON_PREDICT_LIMIT", "10")),
         within_days=float(os.getenv("CRON_WITHIN_DAYS", "30")) or None,
         time_budget=CRON_TIME_BUDGET,
@@ -129,4 +139,4 @@ def cron_predict(authorization: str | None = Header(default=None)):
 @app.get("/api/cron/resolve")
 def cron_resolve(authorization: str | None = Header(default=None)):
     _check_cron_auth(authorization)
-    return jobs.run_resolve(time_budget=CRON_TIME_BUDGET)
+    return _run_job(jobs.run_resolve, time_budget=CRON_TIME_BUDGET)

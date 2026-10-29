@@ -24,3 +24,14 @@ def test_cron_requires_matching_secret(monkeypatch):
 def test_cron_refuses_when_no_secret_configured(monkeypatch):
     c = _client(monkeypatch, None)
     assert c.get("/api/cron/predict", headers={"Authorization": "Bearer "}).status_code == 401
+
+
+def test_cron_reports_why_a_job_failed(monkeypatch):
+    c = _client(monkeypatch, "s3cret")
+
+    def boom(**kw):
+        raise ValueError("Unknown model(s): ['opneai']")
+
+    monkeypatch.setattr(web.jobs, "run_predict", boom)
+    r = c.get("/api/cron/predict", headers={"Authorization": "Bearer s3cret"})
+    assert r.status_code == 500 and r.json() == {"error": "ValueError: Unknown model(s): ['opneai']"}
