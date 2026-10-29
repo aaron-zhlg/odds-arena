@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Odds Arena</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -83,6 +85,7 @@
   tbody tr { transition: background .2s; }
   tbody tr:hover { background: var(--soft); }
   .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px; background: var(--c); }
+  .swatch.hollow { background: #fff; box-shadow: inset 0 0 0 2px var(--c); }
   .skill { position: relative; height: 10px; min-width: 160px; border-radius: 99px; background: var(--soft); overflow: hidden; }
   .skill i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: var(--c); transition: width 1.2s cubic-bezier(.2,.8,.2,1); }
   .hint { color: var(--muted); font-size: 13px; margin-top: 12px; }
@@ -125,6 +128,7 @@
   .pills { display: flex; flex-wrap: wrap; gap: 6px; }
   .pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 99px; padding: 3px 10px; font-size: 12px; background: #fff; white-space: nowrap; max-width: 100%; }
   .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+  .pill.hollow i { background: #fff; box-shadow: inset 0 0 0 2px var(--c); }
   .pill b { font-family: "JetBrains Mono", monospace; }
   .pill .pick { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
   .pill.hit { background: var(--yes-bg); border-color: rgba(21,128,61,.3); } .pill.hit::after { content: "✓"; color: var(--yes); font-weight: 700; }
@@ -152,9 +156,9 @@
 
   /* Detail: model calls as a dot plot on one shared axis */
   .dplot { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px 6px; background: #fffdf8; }
-  .daxis { display: grid; grid-template-columns: 130px 1fr 52px; gap: 12px; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .daxis { display: grid; grid-template-columns: 160px 1fr 52px; gap: 12px; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
   .daxis .ends { display: flex; justify-content: space-between; }
-  .drow { display: grid; grid-template-columns: 130px 1fr 52px; gap: 4px 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+  .drow { display: grid; grid-template-columns: 160px 1fr 52px; gap: 4px 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
   .drow .dn { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .drow .dn .swatch { margin-right: 6px; }
   .dtrack { position: relative; height: 18px; }
@@ -162,6 +166,7 @@
   .dtrack .mid { position: absolute; left: 50%; top: 3px; width: 1px; height: 12px; background: var(--line-strong); }
   .dtrack .crowd { position: absolute; top: 0; width: 2px; height: 18px; margin-left: -1px; background: #3c4150; opacity: .35; border-radius: 2px; }
   .dtrack .dot { position: absolute; top: 2px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--c); border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(31,36,48,.15); }
+  .dtrack .dot.hollow { background: #fff; border: 3px solid var(--c); box-shadow: none; }
   .drow .dv { text-align: right; font-family: "JetBrains Mono", monospace; font-weight: 700; }
   .drow .why { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
   .drow.crowdrow .dn { color: var(--muted); }
@@ -201,6 +206,17 @@
   .src .host { color: var(--sky); font-size: 12px; }
   .src ul { margin: 8px 0 0; padding-left: 18px; color: #3c4150; font-size: 13px; }
   .src li + li { margin-top: 4px; }
+  .src .md { font-size: 13px; color: #3c4150; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); overflow-wrap: anywhere; }
+  .src .md:first-of-type { border-top: 0; padding-top: 0; }
+  .src .md :is(p, ul, ol, table, pre, blockquote) { margin: 0 0 6px; }
+  .src .md :is(h1, h2, h3, h4, h5, h6) { font-size: 13px; margin: 6px 0 4px; letter-spacing: 0; text-transform: none; color: var(--text); }
+  .src .md ul, .src .md ol { padding-left: 18px; }
+  .src .md a { color: var(--sky); }
+  .src .md code { font-family: "JetBrains Mono", monospace; font-size: 12px; background: var(--soft); padding: 0 4px; border-radius: 4px; }
+  .src .md pre { overflow-x: auto; background: var(--soft); padding: 8px; border-radius: 8px; }
+  .src .md table { border-collapse: collapse; display: block; overflow-x: auto; }
+  .src .md th, .src .md td { border: 1px solid var(--line); padding: 4px 8px; font-size: 12px; white-space: normal; text-transform: none; letter-spacing: 0; }
+  .src .md blockquote { border-left: 3px solid var(--line-strong); padding-left: 10px; color: var(--muted); }
   .src-meta { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
   .pred { display: grid; grid-template-columns: 170px 1fr 70px; gap: 6px 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
   .pred:last-child { border-bottom: 0; }
@@ -242,7 +258,8 @@
     .step.p1 { order: -1; }
     .grid2 { grid-template-columns: 1fr; }
     .cards { grid-template-columns: 1fr; }
-    .daxis, .drow { grid-template-columns: 96px 1fr 44px; gap: 4px 8px; }
+    .daxis, .drow { grid-template-columns: 120px 1fr 44px; gap: 4px 8px; }
+    .drow .dn { font-size: 12px; }
     .drawer-inner { padding: 22px 16px 48px; }
     .pred { grid-template-columns: 130px 1fr 56px; }
   }
@@ -310,9 +327,13 @@
 // Colors follow the model, never its rank: known contenders have fixed slots, new ones take the next free slot.
 const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 const FIXED = { market: '#3c4150', coinflip: '#b4b8c2' };
-const SLOT_ORDER = ['openai', 'typesafe', 'perplexity', 'openai+search', 'typesafe+search', 'perplexity+search'];
+const SLOT_ORDER = ['openai', 'typesafe', 'perplexity'];
+// "<model>+search" is the same model given web results: same colour, drawn hollow.
+const baseOf = m => m.replace(/\+search$/, '');
+const isSearch = m => /\+search$/.test(m);
 const colors = {};
-function assignColors(models) {
+function assignColors(all) {
+  const models = [...new Set(all.map(baseOf))];
   const used = new Set(Object.values(colors));
   [...SLOT_ORDER.filter(m => models.includes(m)), ...models.filter(m => !SLOT_ORDER.includes(m)).sort()].forEach(m => {
     if (FIXED[m] || colors[m]) return;
@@ -321,8 +342,19 @@ function assignColors(models) {
     colors[m] = pick; used.add(pick);
   });
 }
-const colorOf = m => FIXED[m] || colors[m] || '#8a8f9c';
+const colorOf = m => FIXED[baseOf(m)] || colors[baseOf(m)] || '#8a8f9c';
+const sw = k => `<span class="swatch${isSearch(k) ? ' hollow' : ''}" style="--c:${colorOf(k)}"></span>`;
 
+// Search snippets are Markdown from arbitrary web pages: render, then sanitize (no scripts, styles,
+// images or embeds), and open links in a new tab without passing a referrer.
+const MD_FORBID = ['img', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'video', 'audio', 'svg', 'math'];
+if (window.DOMPurify) DOMPurify.addHook('afterSanitizeAttributes', n => {
+  if (n.tagName === 'A') { n.setAttribute('target', '_blank'); n.setAttribute('rel', 'noopener noreferrer nofollow'); }
+});
+function renderMd(text) {
+  if (!window.marked || !window.DOMPurify) return `<p>${esc(text)}</p>`;
+  return DOMPurify.sanitize(marked.parse(String(text), { breaks: true, gfm: true }), { FORBID_TAGS: MD_FORBID, FORBID_ATTR: ['style'] });
+}
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const pct = p => Math.round(p * 100) + '%';
 
@@ -358,7 +390,7 @@ function renderPodium(board) {
     const r = board[i];
     return `<div class="step p${i + 1}">
       <div class="medal">${i + 1}</div>
-      <div class="name"><span class="swatch" style="--c:${colorOf(r.model)}"></span>${esc(r.model)}</div>
+      <div class="name">${sw(r.model)}${esc(r.model)}</div>
       <div class="big mono">${r.brier.toFixed(3)}<small>Brier</small></div>
       <div class="score">${(r.accuracy * 100).toFixed(1)}% accuracy · ${r.resolved} resolved</div>
     </div>`;
@@ -376,7 +408,7 @@ function renderBoard(board) {
   el.innerHTML = `<thead><tr><th>#</th><th>Model</th><th>Resolved</th><th>Brier ↓</th><th>Log loss ↓</th><th>Accuracy</th><th>Skill vs coin flip</th></tr></thead><tbody>` +
     board.map((r, i) => `<tr style="--c:${colorOf(r.model)}">
       <td class="mono" style="color:var(--muted)">${String(i + 1).padStart(2, '0')}</td>
-      <td><span class="swatch"></span><b>${esc(r.model)}</b></td>
+      <td>${sw(r.model)}<b>${esc(r.model)}</b></td>
       <td class="mono">${r.resolved}</td>
       <td class="mono">${r.brier.toFixed(3)}</td>
       <td class="mono">${r.log_loss.toFixed(3)}</td>
@@ -411,12 +443,13 @@ function renderCalibration(markets, models) {
     if (pts.length < 2) return;
     drawn.push(model);
     const c = colorOf(model);
-    svg += `<polyline points="${pts.map(p => p.slice(0, 2).join(',')).join(' ')}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/>`;
-    pts.forEach(([px, py, b]) => svg += `<circle cx="${px}" cy="${py}" r="4.5" fill="${c}" stroke="#fff" stroke-width="2" data-tip="<b>${esc(model)}</b><br>said ~${pct(b.p / b.n)} → happened ${pct(b.o / b.n)} (${b.n} markets)"/>`);
+    const hollow = isSearch(model);
+    svg += `<polyline points="${pts.map(p => p.slice(0, 2).join(',')).join(' ')}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"${hollow ? ' stroke-dasharray="5 4"' : ''}/>`;
+    pts.forEach(([px, py, b]) => svg += `<circle cx="${px}" cy="${py}" r="4.5" fill="${hollow ? '#fff' : c}" stroke="${hollow ? c : '#fff'}" stroke-width="2" data-tip="<b>${esc(model)}</b><br>said ~${pct(b.p / b.n)} → happened ${pct(b.o / b.n)} (${b.n} markets)"/>`);
   });
   document.getElementById('calib').innerHTML = svg;
   document.getElementById('legend').innerHTML = drawn.length
-    ? drawn.map(m => `<span><span class="swatch" style="--c:${colorOf(m)}"></span>${esc(m)}</span>`).join('')
+    ? drawn.map(m => `<span>${sw(m)}${esc(m)}</span>`).join('')
     : '<span>Lines appear once enough markets have resolved.</span>';
 }
 
@@ -451,7 +484,7 @@ function gauge(p) {
     <text x="36" y="34" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="#1f2430">${p == null ? '–' : pct(p)}</text></svg><div class="lbl">crowd</div></div>`;
 }
 
-const pill = (k, text, cls = '') => `<span class="pill${cls}" style="--c:${colorOf(k)}" title="${esc(MODEL_INFO[k] || k)}"><i></i>${esc(k)} ${text}</span>`;
+const pill = (k, text, cls = '') => `<span class="pill${cls}${isSearch(k) ? ' hollow' : ''}" style="--c:${colorOf(k)}" title="${esc(MODEL_INFO[k] || k)}"><i></i>${esc(k)} ${text}</span>`;
 
 function yesNoCard(m) {
   const ms = modelsOf(m);
@@ -537,7 +570,7 @@ function renderDetail(d) {
       (d.search.results.length ? d.search.results.map(s => `<div class="src">
         <div class="head"><b>${esc(s.title)}</b><span class="mono">${esc(s.published)}</span></div>
         <div class="host mono">${esc(s.source)}</div>
-        <ul>${(s.snippets || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+        ${(s.snippets || []).map(x => `<div class="md">${renderMd(x)}</div>`).join('')}
       </div>`).join('') : '<p class="src-meta">The search returned no usable sources.</p>');
 
   // Every model on one shared 0-100% axis (P of the first option), the crowd as a reference line.
@@ -555,8 +588,8 @@ function renderDetail(d) {
         : ` <span class="verdict ${called === d.outcome ? 'hit' : 'miss'}">${called === d.outcome ? '✓ right side' : '✗ wrong side'} · Brier ${p.brier.toFixed(3)}</span>`;
       const label = isYesNo(d) ? '' : ` <span style="color:var(--muted)">→ ${esc(p.probability >= 0.5 ? o0 : o1)}</span>`;
       return `<div class="drow${isCrowd ? ' crowdrow' : ''}" style="--c:${colorOf(p.model)}">
-        <div class="dn"><span class="swatch"></span>${isCrowd ? 'crowd' : esc(p.model)}</div>
-        <div class="dtrack"><span class="mid"></span>${crowd != null && !isCrowd ? `<span class="crowd" style="left:${crowd * 100}%"></span>` : ''}<span class="dot" style="left:${p.probability * 100}%"></span></div>
+        <div class="dn">${sw(p.model)}${isCrowd ? 'crowd' : esc(p.model)}</div>
+        <div class="dtrack"><span class="mid"></span>${crowd != null && !isCrowd ? `<span class="crowd" style="left:${crowd * 100}%"></span>` : ''}<span class="dot${isSearch(p.model) ? ' hollow' : ''}" style="left:${p.probability * 100}%"></span></div>
         <div class="dv">${pct(p.probability)}</div>
         ${(p.rationale && !isCrowd) || verdict || label ? `<div class="why">${p.rationale && !isCrowd ? esc(p.rationale) : ''}${label}${verdict}</div>` : ''}
       </div>`;
@@ -570,7 +603,7 @@ function renderDetail(d) {
   const optModels = [...new Set(opts.flatMap(o => Object.keys(o.predictions)))].filter(k => k !== 'coinflip')
     .sort((a, b) => (a === 'market' ? -1 : b === 'market' ? 1 : a.localeCompare(b)));
   const optTable = opts.length ? `<h4>All options in this event · chance of each</h4><div class="otable"><table>
-    <thead><tr><th>Option</th>${optModels.map(k => `<th><span class="swatch" style="--c:${colorOf(k)}"></span>${k === 'market' ? 'crowd' : esc(k)}</th>`).join('')}</tr></thead>
+    <thead><tr><th>Option</th>${optModels.map(k => `<th>${sw(k)}${k === 'market' ? 'crowd' : esc(k)}</th>`).join('')}</tr></thead>
     <tbody>${opts.sort((a, b) => (b.predictions.market ?? -1) - (a.predictions.market ?? -1)).map(o => `<tr class="${o.id === d.id ? 'me' : ''}">
       <td><a href="#market/${encodeURIComponent(o.id)}">${esc(o.group_title || o.question)}</a>${o.outcome === 1 ? ' <span style="color:var(--yes)">✓ won</span>' : ''}</td>
       ${optModels.map(k => `<td class="mono">${o.predictions[k] == null ? '–' : pct(o.predictions[k])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '';
@@ -582,15 +615,15 @@ function renderDetail(d) {
     <div class="facts">${facts}</div>
     ${d.description ? `<details><summary>Resolution rules</summary><p>${esc(d.description)}</p></details>` : ''}
     ${isYesNo(d) ? '' : `<p class="src-meta" style="margin-top:12px">Outcomes: <b>${esc(d.outcomes[0])}</b> vs <b>${esc(d.outcomes[1])}</b>. Every percentage below is the chance of <b>${esc(d.outcomes[0])}</b>.</p>`}
+    <h4>Model calls · chance of ${esc(firstOpt(d))}</h4>${preds}
+    ${optTable}
+    <h4>Actual result</h4>
+    <div class="result-card">${badgeFor(d)}<span style="color:var(--muted)">${resolved ? `Polymarket settled it as <b>${esc(winner(d))}</b> on ${esc((d.resolved_at || '').slice(0, 10))}` : 'Not resolved yet. Scores appear here once Polymarket settles it.'}</span></div>
     <div class="pc-head"><h4>Market price · P(${esc(firstOpt(d))})</h4><div class="ranges" id="ranges">${RANGES.map(([k, l]) =>
       `<button data-r="${k}" class="${k === chartRange ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <div class="pc" id="pc"><div class="loading" style="padding:60px 0;text-align:center">Loading price history…</div></div>
     <div class="pc-note" id="pc-note"></div>
-    <h4>Search results sent to the models</h4>${search}
-    <h4>Model calls · chance of ${esc(firstOpt(d))}</h4>${preds}
-    ${optTable}
-    <h4>Actual result</h4>
-    <div class="result-card">${badgeFor(d)}<span style="color:var(--muted)">${resolved ? `Polymarket settled it as <b>${esc(winner(d))}</b> on ${esc((d.resolved_at || '').slice(0, 10))}` : 'Not resolved yet. Scores appear here once Polymarket settles it.'}</span></div>`;
+    <h4>Search results sent to the models</h4>${search}`;
 }
 
 const fmtTime = (t, span) => {
@@ -628,7 +661,8 @@ function drawPriceChart(points, d) {
   const marks = d.predictions.filter(p => p.model !== 'market').map(p => ({ ...p, t: utcTs(p.created_at) }));
   const inRange = marks.filter(m => m.t >= t0 - 60 && m.t <= t1 + 60);
   inRange.forEach(m => {
-    svg += `<circle cx="${x(Math.min(Math.max(m.t, t0), t1))}" cy="${y(m.probability)}" r="6" fill="${colorOf(m.model)}" stroke="#fff" stroke-width="2"
+    const hollow = isSearch(m.model);
+    svg += `<circle cx="${x(Math.min(Math.max(m.t, t0), t1))}" cy="${y(m.probability)}" r="${hollow ? 5 : 6}" fill="${hollow ? '#fff' : colorOf(m.model)}" stroke="${hollow ? colorOf(m.model) : '#fff'}" stroke-width="${hollow ? 3 : 2}"
       data-tip="<b>${esc(m.model)}</b> predicted ${pct(m.probability)}<br><span class=&quot;mono&quot;>${esc(m.created_at)} UTC</span>"/>`;
   });
   svg += `<g id="pc-hover" style="display:none"><line id="pc-vl" y1="${T}" y2="${H - B}" stroke="rgba(31,36,48,.35)"/><circle id="pc-dot" r="4.5" fill="${FIXED.market}" stroke="#fff" stroke-width="2"/></g>`;
@@ -637,7 +671,7 @@ function drawPriceChart(points, d) {
   const last = points[points.length - 1][1];
   box.innerHTML = `<div class="now"><b class="mono">${(last * 100).toFixed(1)}%</b>latest</div><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Market price history">${svg}</svg>`;
   const legend = inRange.length
-    ? 'Dots: when each model made its prediction and the probability it gave. ' + inRange.map(m => `<span style="white-space:nowrap"><span class="swatch" style="--c:${colorOf(m.model)}"></span>${esc(m.model)}</span>`).join(' ')
+    ? 'Dots: when each model made its prediction and the probability it gave. ' + inRange.map(m => `<span style="white-space:nowrap">${sw(m.model)}${esc(m.model)}</span>`).join(' ')
     : (marks.length ? 'Model predictions fall outside this range; try a wider one.' : '');
   note.innerHTML = legend;
 
