@@ -39,6 +39,16 @@ Market data comes from the public Gamma API and needs no key. For authenticated 
 put `POLYMARKET_KEY_ID` and `POLYMARKET_SECRET_KEY` in `.env` and use `odds_arena.polymarket_us.PolymarketUSClient`,
 which signs each request with Ed25519 as described in the [Polymarket US auth docs](https://docs.polymarket.us/api-reference/authentication).
 
+## Deploying on Vercel with Supabase
+
+1. Import the GitHub repo into Vercel (the FastAPI entrypoint is set in `pyproject.toml`).
+2. In the Vercel project, **Storage → Create → Supabase** and connect it to the project. This sets `POSTGRES_URL`.
+3. Copy `POSTGRES_URL` into your local `.env`, then run `odds-arena predict` / `odds-arena resolve` from your machine.
+   They write to Supabase, and the deployed site reads from it.
+
+Without `POSTGRES_URL` everything uses a local SQLite file. On Vercel that file lives in `/tmp` and is wiped often,
+so a hosted database is needed for real data.
+
 ## Scoring
 
 - **Brier score**: mean of (p − outcome)². Lower is better; always guessing 50% scores 0.25.

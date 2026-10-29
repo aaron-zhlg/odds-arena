@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import random
+from datetime import date, timedelta
 
 from . import db, polymarket
 from .config import ENABLED_MODELS
@@ -16,7 +17,7 @@ def cmd_predict(args):
     with db.connect() as conn:
         for m in markets:
             conn.execute(
-                "INSERT OR IGNORE INTO markets (id, question, end_date) VALUES (?, ?, ?)",
+                "INSERT INTO markets (id, question, end_date) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING",
                 (m.id, m.question, m.end_date),
             )
             for model in models:
@@ -39,11 +40,15 @@ def cmd_resolve(args):
         pending = conn.execute("SELECT id, question FROM markets WHERE outcome IS NULL").fetchall()
         print(f"Checking {len(pending)} unresolved markets")
         for row in pending:
-            m = polymarket.fetch_market(row["id"])
+            try:
+                m = polymarket.fetch_market(row["id"])
+            except Exception as e:  # one bad lookup shouldn't stop the rest
+                print(f"  failed to fetch {row['id']}: {e}")
+                continue
             if m.resolved_outcome is not None:
                 conn.execute(
-                    "UPDATE markets SET outcome=?, resolved_at=datetime('now') WHERE id=?",
-                    (m.resolved_outcome, m.id),
+                    "UPDATE markets SET outcome=?, resolved_at=? WHERE id=?",
+                    (m.resolved_outcome, db.now(), m.id),
                 )
                 print(f"  resolved {'YES' if m.resolved_outcome else 'NO '}  {m.question[:70]}")
 
@@ -58,8 +63,10 @@ def cmd_demo(args):
             price = min(max(truth + rng.gauss(0, 0.12), 0.02), 0.98)
             mid = f"demo-{i}"
             conn.execute(
-                "INSERT OR REPLACE INTO markets (id, question, end_date, outcome, resolved_at) VALUES (?, ?, date('now', ?), ?, datetime('now'))",
-                (mid, f"Demo question #{i + 1}?", f"-{i} days", outcome),
+                """INSERT INTO markets (id, question, end_date, outcome, resolved_at) VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (id) DO UPDATE SET question = excluded.question, end_date = excluded.end_date,
+                   outcome = excluded.outcome, resolved_at = excluded.resolved_at""",
+                (mid, f"Demo question #{i + 1}?", (date.today() - timedelta(days=i)).isoformat(), outcome, db.now()),
             )
             preds = {
                 "market": price,
@@ -69,7 +76,9 @@ def cmd_demo(args):
             }
             for model, p in preds.items():
                 conn.execute(
-                    "INSERT OR REPLACE INTO predictions (market_id, model, probability, market_price, rationale) VALUES (?, ?, ?, ?, 'demo')",
+                    """INSERT INTO predictions (market_id, model, probability, market_price, rationale) VALUES (?, ?, ?, ?, 'demo')
+                       ON CONFLICT (market_id, model) DO UPDATE SET probability = excluded.probability,
+                       market_price = excluded.market_price, rationale = excluded.rationale""",
                     (mid, model, p, price),
                 )
     print("Demo data written. Run `odds-arena serve` to view it.")

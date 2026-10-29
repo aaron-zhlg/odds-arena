@@ -23,7 +23,7 @@ def api_leaderboard():
                FROM predictions p JOIN markets m ON m.id = p.market_id
                WHERE m.outcome IS NOT NULL"""
         ).fetchall()
-        pending = conn.execute("SELECT COUNT(*) FROM markets WHERE outcome IS NULL").fetchone()[0]
+        pending = conn.execute("SELECT COUNT(*) AS n FROM markets WHERE outcome IS NULL").fetchone()["n"]
     return {"leaderboard": leaderboard((r["model"], r["probability"], r["outcome"]) for r in rows), "pending_markets": pending}
 
 
