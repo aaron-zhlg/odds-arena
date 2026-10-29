@@ -56,7 +56,11 @@ def _check_cron_auth(authorization: str | None):
 @app.get("/api/cron/predict")
 def cron_predict(authorization: str | None = Header(default=None)):
     _check_cron_auth(authorization)
-    return jobs.run_predict(limit=int(os.getenv("CRON_PREDICT_LIMIT", "10")), time_budget=CRON_TIME_BUDGET)
+    return jobs.run_predict(
+        limit=int(os.getenv("CRON_PREDICT_LIMIT", "10")),
+        within_days=float(os.getenv("CRON_WITHIN_DAYS", "30")) or None,
+        time_budget=CRON_TIME_BUDGET,
+    )
 
 
 @app.get("/api/cron/resolve")

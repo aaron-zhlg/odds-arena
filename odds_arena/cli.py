@@ -9,7 +9,7 @@ from . import db, jobs
 
 
 def cmd_predict(args):
-    jobs.run_predict(limit=args.limit, model_names=args.models)
+    jobs.run_predict(limit=args.limit, model_names=args.models, within_days=args.within_days or None)
 
 
 def cmd_resolve(args):
@@ -68,6 +68,7 @@ def main():
     sp = sub.add_parser("predict", help="Fetch open markets and record each model's prediction")
     sp.add_argument("--limit", type=int, default=20)
     sp.add_argument("--models", nargs="*", help="Override ODDS_ARENA_MODELS")
+    sp.add_argument("--within-days", type=float, default=30, help="Only markets ending within N days (0 = any)")
     sp.set_defaults(func=cmd_predict)
 
     sub.add_parser("resolve", help="Check Polymarket for resolved outcomes").set_defaults(func=cmd_resolve)

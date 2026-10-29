@@ -4,8 +4,8 @@ Decision models forecast [Polymarket](https://polymarket.com) questions. Once ma
 
 ## How it works
 
-1. **`odds-arena predict`** pulls the highest-volume open binary markets from Polymarket's public Gamma API and asks every enabled model for P(Yes). Predictions are stored in SQLite, one per model per market (made once, never overwritten).
-2. **`odds-arena resolve`** re-checks open markets and records the outcome once Polymarket settles them.
+1. **`odds-arena predict`** pulls the highest-volume open Yes/No markets ending within 30 days (`--within-days`) from Polymarket's public Gamma API and asks every enabled model for P(Yes). Predictions are stored in SQLite, one per model per market (made once, never overwritten).
+2. **`odds-arena resolve`** re-checks open markets and records the outcome once Polymarket's oracle marks them `resolved` (closed alone isn't final).
 3. **`odds-arena serve`** runs the website: a leaderboard (Brier score, log loss, accuracy, skill vs. coin flip) plus a per-market table of every model's call.
 
 ## Models
@@ -53,7 +53,7 @@ Add these in Vercel → Settings → Environment Variables, then redeploy:
 
 - `CRON_SECRET`: random string (`openssl rand -hex 32`); the endpoints refuse every call without it
 - `OPENAI_API_KEY`, `ODDS_ARENA_MODELS` (e.g. `market,coinflip,openai`), optionally `OPENAI_MODEL`
-- optional: `CRON_PREDICT_LIMIT` (default 10 markets), `CRON_TIME_BUDGET` (default 45 s)
+- optional: `CRON_PREDICT_LIMIT` (default 10 markets), `CRON_WITHIN_DAYS` (default 30, 0 = any end date), `CRON_TIME_BUDGET` (default 45 s)
 
 Each run stops starting new work once the time budget is used and commits as it goes, so the next run continues.
 

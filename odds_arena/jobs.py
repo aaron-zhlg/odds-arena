@@ -15,11 +15,11 @@ from .models import load_models
 Log = Callable[[str], None]
 
 
-def run_predict(limit: int = 20, model_names: list[str] | None = None,
+def run_predict(limit: int = 20, model_names: list[str] | None = None, within_days: float | None = 30,
                 time_budget: float | None = None, log: Log = print) -> dict:
     deadline = time.monotonic() + time_budget if time_budget else None
     models = load_models(model_names or ENABLED_MODELS)
-    markets = polymarket.fetch_open_markets(limit=limit)
+    markets = polymarket.fetch_open_markets(limit=limit, within_days=within_days)
     log(f"Fetched {len(markets)} open binary markets")
     made = failed = 0
     timed_out = False

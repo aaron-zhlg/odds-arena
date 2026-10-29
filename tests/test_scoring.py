@@ -15,8 +15,12 @@ def test_leaderboard_ranks_by_brier():
 
 
 def test_parse_gamma_market():
-    m = _to_market({"id": 1, "question": "Q?", "outcomes": '["Yes","No"]', "outcomePrices": '["1","0"]', "closed": True})
-    assert m.is_binary and m.resolved_outcome == 1
+    raw = {"id": 1, "question": "Q?", "outcomes": '["Yes", "No"]', "outcomePrices": '["1", "0"]', "closed": True}
+    assert _to_market(raw).resolved_outcome is None  # closed but oracle not final yet
+    m = _to_market(raw | {"umaResolutionStatus": "resolved"})
+    assert m.is_yes_no and m.resolved_outcome == 1
+    assert _to_market(raw | {"umaResolutionStatus": "resolved", "outcomePrices": '["0", "1"]'}).resolved_outcome == 0
+    assert not _to_market(raw | {"outcomes": '["Over", "Under"]'}).is_yes_no
 
 
 def test_sign_headers_verifies():
