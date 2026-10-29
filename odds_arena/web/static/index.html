@@ -141,7 +141,10 @@
   .orow:hover { background: #fffbef; }
   .orow .on { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .orow .cr { font-family: "JetBrains Mono", monospace; font-weight: 700; }
-  .orow .mr { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+  .orow .mr { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .pills.sm { gap: 4px; }
+  .pills.sm .pill { padding: 1px 7px; font-size: 11px; gap: 4px; }
+  .pills.sm .pill i { width: 6px; height: 6px; }
   .orow.won .on::after { content: " ✓"; color: var(--yes); }
   .card .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
   .card .foot .badge { display: inline-block; width: auto; padding: 2px 8px; font-size: 10px; letter-spacing: .04em; }
@@ -475,19 +478,19 @@ function matchupCard(m) {
 
 function eventCard(g) {
   const items = [...g.items].sort((x, y) => (crowdOf(y) ?? -1) - (crowdOf(x) ?? -1));
-  const shownOpts = items.slice(0, 4);
+  const shownOpts = items.slice(0, 3);
   const row = m => {
-    const vals = modelsOf(m).map(k => m.predictions[k].p);
-    const range = !vals.length ? 'no model calls yet'
-      : vals.length === 1 ? `${modelsOf(m)[0]} ${pct(vals[0])}`
-      : `models ${pct(Math.min(...vals))}–${pct(Math.max(...vals))}`;
-    return `<div class="orow${m.outcome === 1 ? ' won' : ''}" data-id="${esc(m.id)}" title="${modelsOf(m).map(k => `${k}: ${pct(m.predictions[k].p)}`).join(' · ')}">
-      <span class="on">${esc(m.group_title || m.question)}</span><span class="cr">${crowdOf(m) == null ? '–' : pct(crowdOf(m))}</span><span class="mr">${range}</span></div>`;
+    const ms = modelsOf(m);
+    const calls = ms.length
+      ? `<span class="pills sm">${ms.map(k => pill(k, `<b>${pct(m.predictions[k].p)}</b>`, sideClass(m.predictions[k].p, m.outcome))).join('')}</span>`
+      : 'no model calls yet';
+    return `<div class="orow${m.outcome === 1 ? ' won' : ''}" data-id="${esc(m.id)}">
+      <span class="on">${esc(m.group_title || m.question)}</span><span class="cr">${crowdOf(m) == null ? '–' : pct(crowdOf(m))}</span><span class="mr">${calls}</span></div>`;
   };
   const settled = items.filter(m => m.outcome !== null).length;
   return `<article class="card" tabindex="0" data-id="${esc(items[0].id)}">
-    <div><div class="kind">${items.length} options · crowd chance</div><div class="ttl">${esc(g.title || items[0].question)}</div></div>
-    <div class="orows">${shownOpts.map(row).join('')}${items.length > 4 ? `<div class="more-opts">+${items.length - 4} more options</div>` : ''}</div>
+    <div><div class="kind">${items.length} options · crowd chance, then each model</div><div class="ttl">${esc(g.title || items[0].question)}</div></div>
+    <div class="orows">${shownOpts.map(row).join('')}${items.length > 3 ? `<div class="more-opts">+${items.length - 3} more options · open for all</div>` : ''}</div>
     <div class="foot"><span>${settled ? `${settled}/${items.length} settled` : '<span class="badge open">Open</span>'}</span><span class="mono">${items[0].end_date ? 'closes ' + esc(items[0].end_date.slice(0, 10)) : ''}</span></div>
   </article>`;
 }
