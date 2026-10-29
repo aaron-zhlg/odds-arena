@@ -77,6 +77,24 @@ def build_event_request(event, model: str, today: date | None = None, context: l
     return req
 
 
+def build_options_request(event, model: str, today: date | None = None, context: list[dict] | None = None) -> dict:
+    """One request, one Noul per option of an event whose options resolve independently (e.g. price
+    ladders, date ladders). The state is sent once and the questions are answered in parallel."""
+    req = {
+        "model": model,
+        "state": {
+            "event": event.title,
+            "resolution_rules": event.description,
+            "closes": (event.end_date or "")[:10] or "unknown",
+            "today": (today or date.today()).isoformat(),
+        },
+        "questions": {f"o{i}": {"type": "noul", "instructions": o.question} for i, o in enumerate(event.options)},
+    }
+    if context is not None:
+        req["state"]["search_results"] = context
+    return req
+
+
 class DecisionAPIModel(DecisionModel):
     """Subclasses set the endpoint, key and default model."""
 
@@ -109,6 +127,12 @@ class DecisionAPIModel(DecisionModel):
         else:
             p, kind = float(data["answers"]["outcome"]["probabilities"][market.outcomes[0]]), "choice"
         return Prediction(p, f"{self.label} {data.get('model', self.model)} {kind}")
+
+    def predict_options(self, event, context=None):
+        self.last_request = build_options_request(event, self.model, context=context)
+        data = self._post(self.last_request)
+        note = f"{self.label} {data.get('model', self.model)} noul"
+        return {o.id: Prediction(float(data["answers"][f"o{i}"]["noul"]), note) for i, o in enumerate(event.options)}
 
     def predict_event(self, event, context=None):
         self.last_request = build_event_request(event, self.model, context=context)

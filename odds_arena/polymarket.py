@@ -1,7 +1,6 @@
 """Thin client for Polymarket's public Gamma API (no auth needed for reads)."""
 from __future__ import annotations
 
-import itertools
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -160,41 +159,30 @@ def _event_markets(e: dict) -> list[Market]:
             for raw in e.get("markets", []) if not raw.get("closed")]
 
 
-def _iter_category(slugs: list[str], within_days: float | None, max_pages: int):
-    """Open events tagged with any of `slugs`, highest volume first, page by page."""
-    for slug in slugs:
-        for page in range(max_pages):
-            r = httpx.get(f"{GAMMA_API}/events", timeout=30, params={
-                "active": "true", "closed": "false", "tag_slug": slug, "limit": PAGE_SIZE, "offset": page * PAGE_SIZE,
-                "order": "volume", "ascending": "false", **_window(within_days)})
-            r.raise_for_status()
-            events = r.json()
-            yield from events
-            if len(events) < PAGE_SIZE:
-                break
+HOT_EVENTS = 50
 
 
-def iter_open_markets(within_days: float | None = 30, max_pages: int = 3):
-    """Forecastable open markets, taking one event from each category in turn so a run covers sports,
-    crypto, weather... not just the highest-volume politics. Pages are fetched only as far as needed;
-    `max_pages` bounds requests per category tag. (Polymarket's /markets ignores tag filters, /events doesn't.)"""
-    streams = [_iter_category(slugs, within_days, max_pages) for slugs in CATEGORIES.values()]
-    seen: set[str] = set()
-    while streams:
-        for stream in list(streams):
-            for e in stream:  # the next unseen event of this category
-                if str(e["id"]) in seen:
-                    continue
-                seen.add(str(e["id"]))
-                yield from filter(_forecastable, _event_markets(e))
-                break
-            else:
-                streams.remove(stream)
-
-
-def fetch_open_markets(limit: int = 20, within_days: float | None = 30) -> list[Market]:
-    """The first `limit` forecastable markets across categories."""
-    return list(itertools.islice(iter_open_markets(within_days=within_days), limit))
+def iter_hot_events(n: int = HOT_EVENTS, within_days: float | None = 30, max_pages: int = 3):
+    """The `n` hottest open events (by 24-hour trading volume) that still have something to forecast,
+    hottest first. Yields Event objects with their forecastable options only."""
+    found = 0
+    for page in range(max_pages):
+        r = httpx.get(f"{GAMMA_API}/events", timeout=30, params={
+            "active": "true", "closed": "false", "limit": PAGE_SIZE, "offset": page * PAGE_SIZE,
+            "order": "volume24hr", "ascending": "false", **_window(within_days)})
+        r.raise_for_status()
+        events = r.json()
+        for e in events:
+            options = [m for m in _event_markets(e) if _forecastable(m)]
+            if not options:
+                continue
+            yield Event(id=str(e["id"]), title=e.get("title", ""), description=e.get("description") or "",
+                        end_date=e.get("endDate"), options=options)
+            found += 1
+            if found >= n:
+                return
+        if len(events) < PAGE_SIZE:
+            return
 
 
 def fetch_yes_token(market_id: str) -> str:

@@ -4,7 +4,7 @@ Decision models forecast [Polymarket](https://polymarket.com) questions. Once ma
 
 ## How it works
 
-1. **`odds-arena predict`** pulls the highest-volume open markets ending within 30 days (`--within-days`): Yes/No questions, two named options ("Lakers" / "Celtics"), and the options of multi-outcome events (each a Yes/No market, grouped by event on the page). Markets already priced above 98% or below 2% are skipped. Models for one market are called in parallel from Polymarket's public Gamma API and asks every enabled model for P(Yes). Predictions are stored in SQLite, one per model per market (made once, never overwritten).
+1. **`odds-arena predict`** keeps the **50 hottest Polymarket questions** (events, by 24-hour volume, ending within 30 days) forecast. Each model is called **once per question**: a Choice over all options for one-winner events, a batch of Nouls for events whose options can each happen, a single call otherwise. Options already priced above 98% or below 2% are skipped. Models are called in parallel from Polymarket's public Gamma API and asks every enabled model for P(Yes). Predictions are stored in SQLite, one per model per market (made once, never overwritten).
 2. **`odds-arena resolve`** re-checks open markets and records the outcome once Polymarket's oracle marks them `resolved` (closed alone isn't final).
 3. **`odds-arena serve`** runs the website: a leaderboard (Brier score, log loss, accuracy, skill vs. coin flip) plus every market. Click a market (or open `#market/<id>`) to see the search results the `+search` models received, each model's probability and rationale, and the actual result with per-model Brier scores.
 

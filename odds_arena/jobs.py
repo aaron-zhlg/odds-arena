@@ -17,61 +17,25 @@ from .models import load_models
 Log = Callable[[str], None]
 
 
-def run_predict(limit: int = 20, model_names: list[str] | None = None, within_days: float | None = 30,
+def run_predict(limit: int = 10, model_names: list[str] | None = None, within_days: float | None = 30,
                 time_budget: float | None = None, log: Log = print) -> dict:
+    """Keep the hottest Polymarket questions forecast: walk the top HOT_EVENTS events (by 24-hour volume),
+    skipping ones every model already answered, and forecast up to `limit` events this run. Each model is
+    called once per event, whatever its type."""
     deadline = time.monotonic() + time_budget if time_budget else None
     models = load_models(model_names or ENABLED_MODELS)
-    # Page through open markets (highest volume first), skipping ones every model already predicted, until
-    # `limit` markets that still need predictions are done. Pages are fetched only as far as needed.
-    markets = polymarket.iter_open_markets(within_days=within_days)
     made = failed = worked = 0
     timed_out = False
-    events_seen: set[str] = set()
     with db.connect() as conn, ThreadPoolExecutor(max_workers=max(len(models), 1)) as pool:
-        for m in markets:
+        for event in polymarket.iter_hot_events(within_days=within_days):
             if worked >= limit:
                 break
             if deadline and time.monotonic() > deadline:
                 timed_out = True
                 log("Time budget reached; the next run continues from here")
                 break
-            if m.kind == polymarket.ONE_WINNER:  # the whole event at once, one call per model
-                if m.event_id in events_seen:
-                    continue
-                events_seen.add(m.event_id)
-                n_made, n_failed, did = _predict_event(conn, pool, models, m.event_id, log)
-                made, failed, worked = made + n_made, failed + n_failed, worked + did
-                continue
-            done = {r["model"] for r in conn.execute("SELECT model FROM predictions WHERE market_id = ?", (m.id,)).fetchall()}
-            todo = [model for model in models if model.name not in done]
-            if not todo:
-                continue
-            worked += 1
-            _save_market(conn, m)
-            context = None  # fetched at most once per market, shared by all search models
-            if any(model.uses_search for model in todo):
-                try:
-                    context = _search_context(conn, [m.id], m.question, log)
-                except Exception as e:  # no search context: skip the search models rather than predict without it
-                    log(f"  [search] failed on {m.id}: {e}")
-                    failed += sum(1 for model in todo if model.uses_search)
-                    todo = [model for model in todo if not model.uses_search]
-            # Models are independent services, so call them at the same time; writes stay on this thread.
-            futures = {model: pool.submit(model.predict, m, context if model.uses_search else None) for model in todo}
-            for model, fut in futures.items():
-                try:
-                    pred = fut.result()
-                except Exception as e:  # one failing model shouldn't stop the others
-                    failed += 1
-                    log(f"  [{model.name}] failed on {m.id}: {e}")
-                    continue
-                conn.execute(
-                    "INSERT INTO predictions (market_id, model, probability, market_price, rationale) VALUES (?, ?, ?, ?, ?)",
-                    (m.id, model.name, pred.probability, m.yes_price, pred.rationale),
-                )
-                made += 1
-                log(f"  [{model.name}] {pred.probability:.2f}  {m.question[:70]}")
-            conn.commit()
+            n_made, n_failed, did = _predict_event(conn, pool, models, event, log)
+            made, failed, worked = made + n_made, failed + n_failed, worked + did
     return {"markets": worked, "predictions": made, "failed": failed, "timed_out": timed_out}
 
 
@@ -90,10 +54,20 @@ def _save_market(conn, m) -> None:
     )
 
 
-def _predict_event(conn, pool, models, event_id: str, log: Log) -> tuple[int, int, int]:
-    """Forecast a one-winner event as a unit: every open option is saved, each model is asked once for
-    a distribution over all options, and one prediction per option is stored. Returns (made, failed, worked)."""
-    event = polymarket.fetch_event(event_id)
+def _predict_event(conn, pool, models, event, log: Log) -> tuple[int, int, int]:
+    """Forecast one event as a unit, one call per model:
+      one_winner          -> predict_event: a distribution over all open options (adds up to 1)
+      several options     -> predict_options: each option's own chance (they can all happen)
+      a single market     -> predict
+    Returns (made, failed, worked)."""
+    if event.options[0].kind == polymarket.ONE_WINNER:
+        event = polymarket.fetch_event(event.id)  # every open option, long shots included, for the distribution
+        call = lambda model, ctx: model.predict_event(event, ctx)
+    elif len(event.options) > 1:
+        call = lambda model, ctx: model.predict_options(event, ctx)
+    else:
+        only = event.options[0]
+        call = lambda model, ctx: {only.id: model.predict(only, ctx)}
     opts = event.options
     if not opts:
         return 0, 0, 0
@@ -108,26 +82,28 @@ def _predict_event(conn, pool, models, event_id: str, log: Log) -> tuple[int, in
     made = failed = 0
     context = None
     if any(model.uses_search for model in todo):
-        try:  # one search for the event, shared by every option and every search model
-            context = _search_context(conn, [o.id for o in opts], event.title, log)
-        except Exception as e:
-            log(f"  [search] failed on event {event_id}: {e}")
+        query = event.title if len(opts) > 1 else opts[0].question
+        try:  # one search per event, shared by every option and every model
+            context = _search_context(conn, [o.id for o in opts], query, log)
+        except Exception as e:  # no search context: skip the search models rather than predict without it
+            log(f"  [search] failed on event {event.id}: {e}")
             failed += sum(1 for model in todo if model.uses_search)
             todo = [model for model in todo if not model.uses_search]
-    futures = {model: pool.submit(model.predict_event, event, context if model.uses_search else None) for model in todo}
+    # Models are independent services, so call them at the same time; writes stay on this thread.
+    futures = {model: pool.submit(call, model, context if model.uses_search else None) for model in todo}
     for model, fut in futures.items():
         try:
             preds = fut.result()
-        except Exception as e:
+        except Exception as e:  # one failing model shouldn't stop the others
             failed += 1
-            log(f"  [{model.name}] failed on event {event_id}: {e}")
+            log(f"  [{model.name}] failed on event {event.id}: {e}")
             continue
         rows = [(o.id, model.name, preds[o.id].probability, o.yes_price, preds[o.id].rationale)
                 for o in opts if o.id in preds and (o.id, model.name) not in have]
         conn.executemany(
             "INSERT INTO predictions (market_id, model, probability, market_price, rationale) VALUES (?, ?, ?, ?, ?)", rows)
         made += len(rows)
-        log(f"  [{model.name}] {len(rows)} options  {event.title[:60]}")
+        log(f"  [{model.name}] {len(rows)} option(s)  {event.title[:60]}")
     conn.commit()
     return made, failed, 1
 

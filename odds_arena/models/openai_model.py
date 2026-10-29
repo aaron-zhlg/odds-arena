@@ -31,6 +31,19 @@ Give every option a probability; they must add up to 1.
 Reply with JSON only: {{"probabilities": {{"<option>": <number>, ...}}, "rationale": "<one or two sentences>"}}"""
 
 
+OPTIONS_PROMPT = """You are a forecaster. Each question below is a separate prediction market from the same event;
+any number of them can resolve Yes.
+
+Event: {event}
+Questions: {questions}
+Resolution details: {description}
+Markets close: {end_date}
+Today: {today}{search}
+
+Give each question its own probability of resolving Yes.
+Reply with JSON only: {{"probabilities": {{"<question>": <number>, ...}}, "rationale": "<one or two sentences>"}}"""
+
+
 class OpenAIModel(DecisionModel):
     """Asks an OpenAI model for a probability. It does not see the market price."""
 
@@ -60,6 +73,26 @@ class OpenAIModel(DecisionModel):
         data = json.loads(resp.choices[0].message.content)
         p = min(max(float(data["probability"]), 0.0), 1.0)
         return Prediction(p, data.get("rationale", ""))
+
+    def predict_options(self, event, context=None):
+        questions = [o.question for o in event.options]
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": OPTIONS_PROMPT.format(
+                event=event.title,
+                questions=json.dumps(questions, ensure_ascii=False),
+                description=event.description[:2000],
+                end_date=event.end_date,
+                today=date.today().isoformat(),
+                search="" if context is None else "\nWeb search results (JSON):\n" + json.dumps(context, ensure_ascii=False),
+            )}],
+        )
+        data = json.loads(resp.choices[0].message.content)
+        probs = data.get("probabilities", {})
+        # An option the model skipped gets no prediction rather than an invented one.
+        return {o.id: Prediction(min(max(float(probs[o.question]), 0.0), 1.0), data.get("rationale", ""))
+                for o in event.options if o.question in probs}
 
     def predict_event(self, event, context=None):
         labels = [o.option_label for o in event.options]

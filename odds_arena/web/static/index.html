@@ -357,11 +357,11 @@
 
   <nav class="crumb" id="crumb" hidden><a href="/">← Odds Arena</a></nav>
   <section id="markets-section">
-    <h2 id="markets-title">Markets</h2>
+    <h2 id="markets-title">Hottest questions</h2>
     <div class="legend-bar" id="legend-bar"></div>
     <div class="toolbar"><div class="filters" id="filters"></div><input id="search" class="search" type="search" placeholder="Search questions, options, events" hidden></div>
     <div class="cards" id="markets"></div>
-    <a class="chip more" id="more" href="/markets">View all markets →</a>
+    <a class="chip more" id="more" href="/markets">View all questions →</a>
   </section>
 
   <section id="podium-section">
@@ -746,8 +746,8 @@ function renderMarkets() {
   const list = mixed.slice(0, shown);
   const more = document.getElementById('more');
   more.style.display = LIST_PAGE ? 'none' : '';  // always offer the full list (with search), even when it all fits
-  more.textContent = `View all ${groups.length} markets →`;
-  if (LIST_PAGE) document.getElementById('markets-title').textContent = `All markets · ${groups.length}`;
+  more.textContent = `View all ${groups.length} questions →`;  // a question = one card (a Polymarket event)
+  if (LIST_PAGE) document.getElementById('markets-title').textContent = `All questions · ${groups.length}`;
   if (!list.length) { el.innerHTML = '<div class="empty">No markets here yet.</div>'; return; }
   el.innerHTML = list.map(g => g.items.length > 1 ? eventCard(g) : isYesNo(g.items[0]) ? yesNoCard(g.items[0]) : matchupCard(g.items[0])).join('');
 }
@@ -1014,7 +1014,7 @@ function renderFilters() {
 
 if (LIST_PAGE) {
   document.body.classList.add('list-page');
-  document.title = 'All markets · Odds Arena';
+  document.title = 'All questions · Odds Arena';
   document.getElementById('crumb').hidden = false;
   document.getElementById('search').hidden = false;
   document.getElementById('home-header').hidden = true;

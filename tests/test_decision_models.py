@@ -90,3 +90,22 @@ def test_event_choice_request_and_answer(monkeypatch):
     preds = TypesafeModel(api_key="k").predict_event(ev)
     assert {k: v.probability for k, v in preds.items()} == {"a": 0.8, "b": 0.2}
     assert "choice over 2 options" in preds["a"].rationale
+
+
+
+def test_independent_options_request_and_answer(monkeypatch):
+    from odds_arena.polymarket import Event
+    mk = lambda i, q: Market(id=i, question=q, description="", outcomes=["Yes", "No"], prices=[0.5, 0.5], end_date=None,
+                             closed=False, volume=1e5, event_id="e")
+    ev = Event(id="e", title="Ceasefire through...?", description="rules", end_date=None,
+               options=[mk("a", "Ceasefire through Oct 31?"), mk("b", "Ceasefire through Nov 15?")])
+    req = decision_api.build_options_request(ev, "m", today=date(2026, 10, 28))
+    assert req["questions"] == {"o0": {"type": "noul", "instructions": "Ceasefire through Oct 31?"},
+                                "o1": {"type": "noul", "instructions": "Ceasefire through Nov 15?"}}
+
+    def fake_post(u, json, headers, timeout):
+        return httpx.Response(200, json={"model": "v9", "answers": {"o0": {"noul": 0.9}, "o1": {"noul": 0.6}}},
+                              request=httpx.Request("POST", u))
+    monkeypatch.setattr(decision_api.httpx, "post", fake_post)
+    preds = PerplexityModel(api_key="k").predict_options(ev)
+    assert {k: v.probability for k, v in preds.items()} == {"a": 0.9, "b": 0.6}

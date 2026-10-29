@@ -29,3 +29,8 @@ class DecisionModel(ABC):
         The default asks about each option on its own; models that can weigh options against each
         other (one Choice, one distribution) override it."""
         return {m.id: self.predict(m, context) for m in event.options}
+
+    def predict_options(self, event, context: list[dict] | None = None) -> dict[str, Prediction]:
+        """An event whose options can each happen: {option market id: P(that option happens)}, each on its
+        own (they needn't add up to 1). The default asks one by one; batching models override it."""
+        return {m.id: self.predict(m, context) for m in event.options}

@@ -44,6 +44,17 @@ def test_ai_models_search_and_old_suffix_maps_to_the_same_model(monkeypatch):
     assert [(m.name, m.uses_search) for m in models] == [("market", False), ("fake", True)]  # deduped, AI searches
 
 
+def as_events(markets):
+    """Group markets into Polymarket events as iter_hot_events yields them (a market alone is its own event)."""
+    from odds_arena.polymarket import Event
+    events = {}
+    for m in markets:
+        key = m.event_id or m.id
+        events.setdefault(key, Event(id=key, title=m.event_title or m.question, description="", end_date=None, options=[]))
+        events[key].options.append(m)
+    return list(events.values())
+
+
 class Recorder(DecisionModel):
     def __init__(self, name, uses_search):
         self.name, self.uses_search, self.seen = name, uses_search, []
@@ -58,7 +69,7 @@ def test_one_search_per_market_shared_by_all_search_models(monkeypatch, tmp_path
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
     markets = [Market(id=str(i), question=f"Q{i}?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5],
                       end_date=None, closed=False, volume=1e5) for i in range(2)]
-    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: markets)
+    monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: as_events(markets))
     calls = []
     monkeypatch.setattr(jobs.search, "search_context", lambda q: calls.append(q) or [{"source": q}])
     models = [Recorder("a", False), Recorder("b+search", True), Recorder("c+search", True)]
@@ -75,7 +86,7 @@ def test_search_failure_skips_search_models_only(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "DATABASE_URL", None)
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
     m = Market(id="1", question="Q?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5], end_date=None, closed=False, volume=1e5)
-    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: [m])
+    monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: as_events([m]))
 
     def boom(q):
         raise RuntimeError("brave down")
@@ -96,7 +107,7 @@ def test_stored_search_is_reused_and_served(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
     m = Market(id="7", question="Q7?", description="Resolves Yes if X.", outcomes=["Yes", "No"], prices=[0.3, 0.7],
                end_date="2026-11-04T00:00:00Z", closed=False, volume=1e5, slug="q7")
-    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: [m])
+    monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: as_events([m]))
     calls = []
     monkeypatch.setattr(jobs.search, "search_context", lambda q: calls.append(q) or [{"source": "a.com", "snippets": ["x"]}])
 
@@ -163,7 +174,7 @@ def test_markets_api_returns_outcomes_events_and_siblings(monkeypatch, tmp_path)
     mk = lambda i, outcomes, ev, grp, price=0.5: Market(id=i, question=f"Q{i}?", description="", outcomes=outcomes, prices=[price, 1 - price],
                                          end_date=None, closed=False, volume=1e5, event_id=ev, event_title="Which party?" if ev else None, group_title=grp)
     markets = [mk("d", ["Yes", "No"], "e1", "Democrats"), mk("r", ["Yes", "No"], "e1", "Republicans"), mk("g", ["Lakers", "Celtics"], None, None)]
-    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: markets)
+    monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: as_events(markets))
     monkeypatch.setattr(jobs, "load_models", lambda names: [Recorder("a", False)])
     jobs.run_predict(model_names=["x"], log=lambda s: None)
     with db.connect() as conn:  # a row from before the outcomes column existed
@@ -177,21 +188,32 @@ def test_markets_api_returns_outcomes_events_and_siblings(monkeypatch, tmp_path)
     assert [s["group_title"] for s in d["siblings"]] == ["Republicans"] and c.get("/api/markets/g").json()["siblings"] == []
 
 
-def test_settled_looking_markets_are_skipped(monkeypatch):
+def test_hot_events_are_ranked_and_capped(monkeypatch):
     from odds_arena import polymarket
-    mk = lambda i, p: {"id": i, "question": "Q", "outcomes": '["A", "B"]', "outcomePrices": f'["{p}", "{1 - p}"]', "volume": "1e6"}
+    mk = lambda i, p: {"id": i, "question": f"{i}?", "outcomes": '["Yes", "No"]', "outcomePrices": f'["{p}", "{1 - p}"]', "volume": "1e6"}
+    seen_params = []
 
     class R:
         def __init__(self, params): self.params = params
         def raise_for_status(self): pass
         def json(self):
-            if self.params["tag_slug"] != "sports" or self.params["offset"]:
+            if self.params["offset"]:
                 return []
-            return [{"id": "e", "title": "E", "tags": [{"slug": "sports"}], "markets": [mk("live", 0.6), mk("done", 0.995), mk("dead", 0.005)]}]
+            return [
+                {"id": "hot", "title": "Hot", "tags": [{"slug": "sports"}], "markets": [mk("a", 0.6), mk("done", 0.995)]},
+                {"id": "dead", "title": "Settled", "markets": [mk("x", 0.999)]},           # nothing left to forecast
+                {"id": "warm", "title": "Warm", "markets": [mk("b", 0.3)]},
+                {"id": "cool", "title": "Cool", "markets": [mk("c", 0.5)]},
+            ]
 
-    monkeypatch.setattr(polymarket.httpx, "get", lambda url, params, timeout: R(params))
-    got = polymarket.fetch_open_markets(within_days=None)
-    assert [m.id for m in got] == ["live"] and got[0].category == "Sports" and got[0].event_title == "E"
+    def fake_get(url, params, timeout):
+        seen_params.append(params); return R(params)
+
+    monkeypatch.setattr(polymarket.httpx, "get", fake_get)
+    events = list(polymarket.iter_hot_events(n=2, within_days=None))
+    assert [e.id for e in events] == ["hot", "warm"]                        # hottest first, settled one skipped, capped
+    assert [o.id for o in events[0].options] == ["a"] and events[0].options[0].category == "Sports"
+    assert seen_params[0]["order"] == "volume24hr" and len(seen_params) == 1
 
 
 def test_predict_moves_on_to_markets_that_still_need_predictions(monkeypatch, tmp_path):
@@ -199,38 +221,30 @@ def test_predict_moves_on_to_markets_that_still_need_predictions(monkeypatch, tm
     monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
     ms = [Market(id=str(i), question=f"Q{i}?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5],
                  end_date=None, closed=False, volume=1e5) for i in range(5)]
-    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: ms)
+    monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: as_events(ms))
     monkeypatch.setattr(jobs, "load_models", lambda names: [Recorder("a", False)])
     runs = [jobs.run_predict(limit=2, model_names=["x"], log=lambda s: None) for _ in range(3)]
     assert [r["markets"] for r in runs] == [2, 2, 1] and sum(r["predictions"] for r in runs) == 5
 
 
-def test_iter_open_markets_takes_categories_in_turn(monkeypatch):
-    from odds_arena import polymarket
-    mk = lambda i: {"id": i, "question": "Q", "outcomes": '["Yes", "No"]', "outcomePrices": '["0.5", "0.5"]', "volume": "1e6"}
-    pool = {  # tag slug -> its events, highest volume first; "shared" is tagged both politics and geopolitics
-        "politics": [{"id": "p1", "tags": [{"slug": "politics"}], "markets": [mk("p1")]},
-                     {"id": "shared", "tags": [{"slug": "politics"}, {"slug": "geopolitics"}], "markets": [mk("s")]}],
-        "sports": [{"id": "s1", "tags": [{"slug": "sports"}], "markets": [mk("s1")]}],
-        "geopolitics": [{"id": "shared", "tags": [{"slug": "politics"}, {"slug": "geopolitics"}], "markets": [mk("s")]}],
-    }
-    requests = []
+def test_independent_options_are_one_call_per_model(monkeypatch, tmp_path):
+    from odds_arena.models.base import Prediction as P
+    monkeypatch.setattr(db, "DATABASE_URL", None)
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
+    opt = lambda i: Market(id=i, question=f"BTC above {i}k?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5],
+                           end_date=None, closed=False, volume=1e5, event_id="btc", event_title="Bitcoin above ___?")
+    monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: as_events([opt("80"), opt("90"), opt("100")]))
+    monkeypatch.setattr(jobs.search, "search_context", lambda q: [])
 
-    class R:
-        def __init__(self, params): self.params = params
-        def raise_for_status(self): pass
-        def json(self): return pool.get(self.params["tag_slug"], []) if self.params["offset"] == 0 else []
+    class Batcher(Recorder):
+        calls = 0
+        def predict_options(self, ev, context=None):
+            Batcher.calls += 1
+            return {o.id: P(0.1 * (i + 1), "b") for i, o in enumerate(ev.options)}
 
-    def fake_get(url, params, timeout):
-        requests.append(params["tag_slug"]); return R(params)
-
-    monkeypatch.setattr(polymarket.httpx, "get", fake_get)
-    got = list(polymarket.iter_open_markets(within_days=None))
-    assert [m.id for m in got] == ["s1", "s", "p1"]           # sports first, each event once, then politics
-    assert {m.id: m.category for m in got} == {"s1": "Sports", "s": "Geopolitics", "p1": "Politics"}
-    first = polymarket.iter_open_markets(within_days=None)
-    requests.clear(); next(first)
-    assert requests == ["sports"]                              # lazy: one request for the first market
+    monkeypatch.setattr(jobs, "load_models", lambda names: [Batcher("x", True)])
+    r = jobs.run_predict(model_names=["x"], log=lambda s: None)
+    assert (r["markets"], r["predictions"], Batcher.calls) == (1, 3, 1)
 
 
 def test_one_winner_event_is_forecast_as_a_unit(monkeypatch, tmp_path):
@@ -242,7 +256,7 @@ def test_one_winner_event_is_forecast_as_a_unit(monkeypatch, tmp_path):
                                         event_id="e1", event_title="Who wins?", group_title=name, neg_risk=True)
     dem, rep = opt("d", "Democrats", 0.9), opt("r", "Republicans", 0.1)
     event = jobs.polymarket.Event(id="e1", title="Who wins?", description="rules", end_date=None, options=[dem, rep])
-    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: [dem, rep])  # both options listed
+    monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: as_events([dem, rep]))  # one event with both options
     fetches = []
     monkeypatch.setattr(jobs.polymarket, "fetch_event", lambda eid: fetches.append(eid) or event)
     searches = []
