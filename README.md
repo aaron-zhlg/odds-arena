@@ -54,9 +54,10 @@ which signs each request with Ed25519 as described in the [Polymarket US auth do
 3. Copy `POSTGRES_URL` into your local `.env`, then run `odds-arena predict` / `odds-arena resolve` from your machine.
    They write to Supabase, and the deployed site reads from it.
 
-### Automatic hourly runs (GitHub Actions)
+### Automatic runs (GitHub Actions)
 
-`.github/workflows/cron.yml` calls `/api/cron/predict` then `/api/cron/resolve` every hour. Add the same
+`.github/workflows/cron.yml` calls `/api/cron/resolve` (outcomes + price sync, no AI calls) every 5 minutes
+and `/api/cron/predict` every hour. Add the same
 `CRON_SECRET` as a repository secret (Settings → Secrets and variables → Actions). You can also start it
 by hand from the Actions tab ("Run workflow"). GitHub pauses scheduled workflows in repositories with no
 activity for 60 days; re-enable it from the Actions tab if that happens.

@@ -1,11 +1,13 @@
-# Hourly predict + resolve. Vercel's Hobby plan only allows daily cron jobs, so GitHub calls the
+# Resolve + price sync every 5 minutes (fast, no AI calls); predict hourly (calls the AI models, and new
+# markets don't appear that fast). Vercel's Hobby plan only allows daily cron jobs, so GitHub calls the
 # same CRON_SECRET-protected endpoints instead. Only this repo's schedule and people with write
 # access (manual "Run workflow") can start it; forks don't receive the secret.
-name: Hourly predict & resolve
+name: Predict & resolve
 
 on:
   schedule:
-    - cron: "7 * * * *"  # minute 7: top-of-the-hour schedules are the most delayed on GitHub
+    - cron: "*/5 * * * *"  # resolve + prices (GitHub's shortest interval; runs can be delayed under load)
+    - cron: "7 * * * *"    # predict, at minute 7: top-of-the-hour schedules are the most delayed
   workflow_dispatch:
 
 permissions:
@@ -30,6 +32,8 @@ jobs:
             exit 1
           fi
       - name: Predict new markets
+        # hourly schedule or a manual run; the 5-minute schedule only resolves
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '7 * * * *'
         run: |
           curl --fail-with-body -sS -m 330 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/predict"
       - name: Resolve outcomes and sync prices
