@@ -416,6 +416,8 @@ function assignColors(all) {
     colors[m] = pick; used.add(pick);
   });
 }
+// Display name: the stored 'market' baseline is the crowd, i.e. the Polymarket price.
+const nameOf = k => (k === 'market' ? 'crowd' : k);
 const colorOf = m => FIXED[baseOf(m)] || colors[baseOf(m)] || '#8a8f9c';
 const sw = k => `<span class="swatch${isSearch(k) ? ' hollow' : ''}" style="--c:${colorOf(k)}"></span>`;
 
@@ -464,7 +466,7 @@ function renderPodium(board) {
     const r = board[i];
     return `<div class="step p${i + 1}">
       <div class="medal">${i + 1}</div>
-      <div class="name">${sw(r.model)}${esc(r.model)}</div>
+      <div class="name">${sw(r.model)}${esc(nameOf(r.model))}</div>
       <div class="big mono">${r.brier.toFixed(3)}<small>Brier</small></div>
       <div class="score">${(r.accuracy * 100).toFixed(1)}% accuracy · ${r.resolved} resolved</div>
     </div>`;
@@ -482,7 +484,7 @@ function renderBoard(board) {
   el.innerHTML = `<thead><tr><th>#</th><th>Model</th><th>Resolved</th><th>Brier ↓</th><th>Log loss ↓</th><th>Accuracy</th><th>Skill vs coin flip</th></tr></thead><tbody>` +
     board.map((r, i) => `<tr style="--c:${colorOf(r.model)}">
       <td class="mono" style="color:var(--muted)">${String(i + 1).padStart(2, '0')}</td>
-      <td>${sw(r.model)}<b>${esc(r.model)}</b></td>
+      <td>${sw(r.model)}<b>${esc(nameOf(r.model))}</b></td>
       <td class="mono">${r.resolved}</td>
       <td class="mono">${r.brier.toFixed(3)}</td>
       <td class="mono">${r.log_loss.toFixed(3)}</td>
@@ -519,11 +521,11 @@ function renderCalibration(markets, models) {
     const c = colorOf(model);
     const hollow = isSearch(model);
     svg += `<polyline points="${pts.map(p => p.slice(0, 2).join(',')).join(' ')}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"${hollow ? ' stroke-dasharray="5 4"' : ''}/>`;
-    pts.forEach(([px, py, b]) => svg += `<circle cx="${px}" cy="${py}" r="4.5" fill="${hollow ? '#fff' : c}" stroke="${hollow ? c : '#fff'}" stroke-width="2" data-tip="<b>${esc(model)}</b><br>said ~${pct(b.p / b.n)} → happened ${pct(b.o / b.n)} (${b.n} markets)"/>`);
+    pts.forEach(([px, py, b]) => svg += `<circle cx="${px}" cy="${py}" r="4.5" fill="${hollow ? '#fff' : c}" stroke="${hollow ? c : '#fff'}" stroke-width="2" data-tip="<b>${esc(nameOf(model))}</b><br>said ~${pct(b.p / b.n)} → happened ${pct(b.o / b.n)} (${b.n} markets)"/>`);
   });
   document.getElementById('calib').innerHTML = svg;
   document.getElementById('legend').innerHTML = drawn.length
-    ? drawn.map(m => `<span>${sw(m)}${esc(m)}</span>`).join('')
+    ? drawn.map(m => `<span>${sw(m)}${esc(nameOf(m))}</span>`).join('')
     : '<span>Lines appear once enough markets have resolved.</span>';
 }
 
@@ -533,7 +535,7 @@ const HOME_GROUPS = 9;
 let allMarkets = [], allModels = [], filter = 'all', query = '';
 const shown = LIST_PAGE ? Infinity : HOME_GROUPS;
 const MODEL_INFO = {
-  market: 'Baseline: the Polymarket price when the prediction was made (the crowd)',
+  market: 'The crowd: the Polymarket price when the AI models made their calls',
   coinflip: 'Baseline: always 50%. Anything useful should beat it',
 };
 const ref = k => k === 'market';
