@@ -1,4 +1,5 @@
 import hmac
+import json
 import os
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 
 from .. import db, jobs
-from ..scoring import leaderboard
+from ..scoring import brier, leaderboard
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI(title="Odds Arena")
@@ -44,6 +45,29 @@ def api_markets(limit: int = 50):
     for p in preds:
         by_market.setdefault(p["market_id"], {})[p["model"]] = {"p": p["probability"], "rationale": p["rationale"]}
     return [dict(m) | {"predictions": by_market.get(m["id"], {})} for m in markets]
+
+
+@app.get("/api/markets/{market_id}")
+def api_market(market_id: str):
+    with db.connect() as conn:
+        m = conn.execute(
+            "SELECT id, question, end_date, outcome, resolved_at, description, slug FROM markets WHERE id = ?",
+            (market_id,),
+        ).fetchone()
+        if not m:
+            raise HTTPException(status_code=404, detail="Market not found")
+        ctx = conn.execute("SELECT query, results, created_at FROM search_contexts WHERE market_id = ?", (market_id,)).fetchone()
+        preds = conn.execute(
+            "SELECT model, probability, market_price, rationale, created_at FROM predictions WHERE market_id = ? ORDER BY model",
+            (market_id,),
+        ).fetchall()
+    outcome = m["outcome"]
+    return dict(m) | {
+        "search": None if not ctx else {"query": ctx["query"], "created_at": ctx["created_at"], "results": json.loads(ctx["results"])},
+        "predictions": [
+            dict(p) | {"brier": None if outcome is None else brier(p["probability"], outcome)} for p in preds
+        ],
+    }
 
 
 def _check_cron_auth(authorization: str | None):

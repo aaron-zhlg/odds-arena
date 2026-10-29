@@ -5,6 +5,7 @@ serverless function's time limit. Work is committed as it goes; the next run pic
 """
 from __future__ import annotations
 
+import json
 import time
 from typing import Callable
 
@@ -26,8 +27,9 @@ def run_predict(limit: int = 20, model_names: list[str] | None = None, within_da
     with db.connect() as conn:
         for m in markets:
             conn.execute(
-                "INSERT INTO markets (id, question, end_date) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING",
-                (m.id, m.question, m.end_date),
+                """INSERT INTO markets (id, question, end_date, description, slug) VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT (id) DO UPDATE SET description = excluded.description, slug = excluded.slug""",
+                (m.id, m.question, m.end_date, m.description, m.slug),
             )
             context, search_error = None, None  # fetched at most once per market, shared by all search models
             for model in models:
@@ -39,8 +41,7 @@ def run_predict(limit: int = 20, model_names: list[str] | None = None, within_da
                 if model.uses_search and context is None:
                     if search_error is None:
                         try:
-                            context = search.search_context(m.question)
-                            log(f"  [search] {len(context)} sources  {m.question[:60]}")
+                            context = _search_context(conn, m, log)
                         except Exception as e:
                             search_error = e
                             log(f"  [search] failed on {m.id}: {e}")
@@ -64,6 +65,22 @@ def run_predict(limit: int = 20, model_names: list[str] | None = None, within_da
                 log("Time budget reached; the next run continues from here")
                 break
     return {"markets": len(markets), "predictions": made, "failed": failed, "timed_out": timed_out}
+
+
+def _search_context(conn, market, log: Log) -> list[dict]:
+    """The market's stored search results, or a new search that is stored before use.
+    Stored results are reused, so a +search model added later sees what the others saw."""
+    row = conn.execute("SELECT results FROM search_contexts WHERE market_id = ?", (market.id,)).fetchone()
+    if row:
+        return json.loads(row["results"])
+    context = search.search_context(market.question)
+    conn.execute(
+        "INSERT INTO search_contexts (market_id, query, results) VALUES (?, ?, ?) ON CONFLICT (market_id) DO NOTHING",
+        (market.id, search.query_for(market.question), json.dumps(context, ensure_ascii=False)),
+    )
+    conn.commit()
+    log(f"  [search] {len(context)} sources  {market.question[:60]}")
+    return context
 
 
 def run_resolve(time_budget: float | None = None, log: Log = print) -> dict:

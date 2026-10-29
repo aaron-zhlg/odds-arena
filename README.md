@@ -6,7 +6,7 @@ Decision models forecast [Polymarket](https://polymarket.com) questions. Once ma
 
 1. **`odds-arena predict`** pulls the highest-volume open Yes/No markets ending within 30 days (`--within-days`) from Polymarket's public Gamma API and asks every enabled model for P(Yes). Predictions are stored in SQLite, one per model per market (made once, never overwritten).
 2. **`odds-arena resolve`** re-checks open markets and records the outcome once Polymarket's oracle marks them `resolved` (closed alone isn't final).
-3. **`odds-arena serve`** runs the website: a leaderboard (Brier score, log loss, accuracy, skill vs. coin flip) plus a per-market table of every model's call.
+3. **`odds-arena serve`** runs the website: a leaderboard (Brier score, log loss, accuracy, skill vs. coin flip) plus every market. Click a market (or open `#market/<id>`) to see the search results the `+search` models received, each model's probability and rationale, and the actual result with per-model Brier scores.
 
 ## Models
 
@@ -21,7 +21,8 @@ Decision models forecast [Polymarket](https://polymarket.com) questions. Once ma
 **Web search context.** Add `+search` to any model name (e.g. `typesafe+search`) to enter it again with
 Brave LLM Context results (`BRAVE_API_KEY`). Each market is searched once and every `+search` model gets the
 identical results. Prediction-market sites (Polymarket, Kalshi, …) and any snippet mentioning one are removed,
-so no model sees the crowd's odds. `SEARCH_MAX_TOKENS` defaults to 8192 and is capped at 16384 to stay inside
+so no model sees the crowd's odds; an article whose title is about prediction markets is dropped whole.
+Results are stored in `search_contexts`, so a `+search` model added later gets the same results as the others. `SEARCH_MAX_TOKENS` defaults to 8192 and is capped at 16384 to stay inside
 Jev's 32k per-question limit.
 
 Add a model: subclass `DecisionModel` in `odds_arena/models/`, implement `predict(market) -> Prediction`, and register it in `odds_arena/models/__init__.py`.

@@ -30,7 +30,16 @@ CREATE TABLE IF NOT EXISTS predictions (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (market_id, model)
 );
+CREATE TABLE IF NOT EXISTS search_contexts (
+    market_id TEXT PRIMARY KEY REFERENCES markets(id),
+    query TEXT NOT NULL,
+    results TEXT NOT NULL,      -- JSON list exactly as sent to the +search models
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
+
+# Columns added after the first release; created on existing databases at connect time.
+MARKET_COLUMNS_ADDED = {"description": "TEXT", "slug": "TEXT"}
 
 POSTGRES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS markets (
@@ -50,10 +59,19 @@ CREATE TABLE IF NOT EXISTS predictions (
     created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD HH24:MI:SS'),
     UNIQUE (market_id, model)
 );
+CREATE TABLE IF NOT EXISTS search_contexts (
+    market_id TEXT PRIMARY KEY REFERENCES markets(id),
+    query TEXT NOT NULL,
+    results TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD HH24:MI:SS')
+);
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS slug TEXT;
 -- Supabase exposes public tables through its REST API. RLS with no policies blocks that;
 -- this app connects directly as the table owner, which RLS does not restrict.
 ALTER TABLE markets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE search_contexts ENABLE ROW LEVEL SECURITY;
 """
 
 
@@ -105,6 +123,10 @@ def _open():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.executescript(SQLITE_SCHEMA)
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(markets)")}
+    for col, typ in MARKET_COLUMNS_ADDED.items():
+        if col not in have:
+            conn.execute(f"ALTER TABLE markets ADD COLUMN {col} {typ}")
     return conn
 
 

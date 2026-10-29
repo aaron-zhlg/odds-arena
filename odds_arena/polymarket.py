@@ -21,6 +21,7 @@ class Market:
     closed: bool
     volume: float
     resolution_status: str | None = None  # UMA oracle status, "resolved" once final
+    slug: str | None = None
 
     @property
     def is_binary(self) -> bool:
@@ -67,6 +68,7 @@ def _to_market(raw: dict) -> Market:
         closed=bool(raw.get("closed")),
         volume=float(raw.get("volume") or 0),
         resolution_status=raw.get("umaResolutionStatus"),
+        slug=raw.get("slug"),
     )
 
 

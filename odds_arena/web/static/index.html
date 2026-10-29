@@ -105,6 +105,43 @@
   .chip.on { color: #000; background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 18px -4px var(--cyan); }
   .market { display: grid; grid-template-columns: 1fr 260px 64px; gap: 18px; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--line); }
   .market:last-child { border-bottom: 0; }
+  .market { cursor: pointer; transition: background .15s; }
+  .market:hover { background: rgba(255,255,255,.035); }
+  .market:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+
+  /* Market detail drawer */
+  .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(4,4,10,.6); backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .overlay.open { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 21; width: min(720px, 100%); background: #0c0c16; border-left: 1px solid var(--line); overflow-y: auto; transform: translateX(100%); transition: transform .28s cubic-bezier(.2,.8,.2,1); box-shadow: -30px 0 80px rgba(0,0,0,.5); }
+  .drawer.open { transform: none; }
+  .drawer-inner { padding: 28px 28px 60px; }
+  .drawer .close { position: sticky; top: 0; float: right; margin: -8px -8px 0 0; width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: #12121e; color: var(--text); font-size: 18px; cursor: pointer; }
+  .drawer h3 { font-size: 24px; line-height: 1.25; margin: 6px 48px 10px 0; letter-spacing: -.01em; }
+  .drawer .facts { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 13px; }
+  .drawer .facts a { color: var(--cyan); text-decoration: none; }
+  .drawer h4 { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin: 30px 0 12px; font-weight: 500; }
+  .drawer details { margin-top: 14px; color: var(--muted); font-size: 13px; }
+  .drawer details summary { cursor: pointer; color: var(--text); }
+  .drawer details p { white-space: pre-wrap; margin: 8px 0 0; }
+  .result-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.02); }
+  .result-card .badge { width: 64px; }
+  .src { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: rgba(255,255,255,.015); }
+  .src .head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+  .src .head b { color: var(--text); font-weight: 500; }
+  .src .head span { color: var(--muted); white-space: nowrap; }
+  .src .host { color: var(--cyan); font-size: 12px; }
+  .src ul { margin: 8px 0 0; padding-left: 18px; color: #c4c7da; font-size: 13px; }
+  .src li + li { margin-top: 4px; }
+  .src-meta { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .pred { display: grid; grid-template-columns: 150px 1fr 70px; gap: 6px 14px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .pred:last-child { border-bottom: 0; }
+  .pred .bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.06); position: relative; overflow: hidden; }
+  .pred .bar i { position: absolute; inset: 0 auto 0 0; background: var(--c); box-shadow: 0 0 12px var(--c); border-radius: inherit; }
+  .pred .p { font-size: 18px; font-weight: 700; text-align: right; }
+  .pred .why { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+  .pred .verdict { font-size: 12px; margin-left: 6px; }
+  .verdict.hit { color: var(--yes); } .verdict.miss { color: var(--no); }
+  .loading { color: var(--muted); padding: 40px 0; }
   .market .q { font-weight: 500; }
   .market .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
   .track { position: relative; height: 26px; }
@@ -186,6 +223,8 @@
   <footer>Odds Arena · <a href="https://github.com/aaron-zhlg/odds-arena">GitHub</a></footer>
 </main>
 <div class="tip" id="tip"></div>
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Market detail"><div class="drawer-inner" id="drawer-body"></div></aside>
 
 <script>
 const PALETTE = ['#22e4ff', '#ff3d9a', '#b6ff3d', '#ffd166', '#a78bfa', '#ff8a3d', '#3dffa2', '#f472b6'];
@@ -294,13 +333,98 @@ function renderMarkets() {
       return `<span class="dot" style="left:${p.p * 100}%;--c:${c}" data-tip="<b>${esc(k)}</b> · ${pct(p.p)} yes${p.rationale ? '<br>' + esc(p.rationale) : ''}"></span>`;
     }).join('');
     const badge = m.outcome === null ? '<div class="badge open">OPEN</div>' : m.outcome ? '<div class="badge yes">YES</div>' : '<div class="badge no">NO</div>';
-    return `<div class="market">
+    return `<div class="market" tabindex="0" role="button" data-id="${esc(m.id)}">
       <div><div class="q">${esc(m.question)}</div><div class="meta mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</div></div>
       <div class="track-wrap"><div class="track"><span class="mid"></span>${dots}</div><div class="axis mono"><span>NO</span><span>50</span><span>YES</span></div></div>
       ${badge}
     </div>`;
   }).join('');
 }
+
+// Market detail: opened via #market/<id>, so links are shareable and Back closes it.
+const badgeFor = o => o === null || o === undefined ? '<div class="badge open">OPEN</div>' : o ? '<div class="badge yes">YES</div>' : '<div class="badge no">NO</div>';
+
+function renderDetail(d) {
+  const resolved = d.outcome !== null;
+  const facts = [
+    d.end_date && `closes <span class="mono">${esc(d.end_date.slice(0, 10))}</span>`,
+    d.resolved_at && `resolved <span class="mono">${esc(d.resolved_at.slice(0, 10))}</span>`,
+    d.slug && `<a href="https://polymarket.com/market/${encodeURIComponent(d.slug)}" target="_blank" rel="noopener">View on Polymarket ↗</a>`,
+  ].filter(Boolean).join('');
+
+  const search = !d.search
+    ? '<p class="src-meta">No web search was run for this market (no <span class="mono">+search</span> model predicted it).</p>'
+    : `<p class="src-meta">Query <span class="mono">"${esc(d.search.query)}"</span> · fetched ${esc(d.search.created_at)} · ${d.search.results.length} sources. Every <span class="mono">+search</span> model received exactly this list.</p>` +
+      (d.search.results.length ? d.search.results.map(s => `<div class="src">
+        <div class="head"><b>${esc(s.title)}</b><span class="mono">${esc(s.published)}</span></div>
+        <div class="host mono">${esc(s.source)}</div>
+        <ul>${(s.snippets || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+      </div>`).join('') : '<p class="src-meta">The search returned no usable sources.</p>');
+
+  const preds = d.predictions.length ? d.predictions.map(p => {
+    const c = colorOf(p.model);
+    const called = p.probability >= 0.5 ? 1 : 0;
+    const verdict = resolved
+      ? `<span class="verdict ${called === d.outcome ? 'hit' : 'miss'}">${called === d.outcome ? '✓ right side' : '✗ wrong side'} · Brier ${p.brier.toFixed(3)}</span>`
+      : '';
+    const price = p.market_price != null ? ` · market was ${pct(p.market_price)} then` : '';
+    return `<div class="pred" style="--c:${c}">
+      <div><span class="swatch"></span><b>${esc(p.model)}</b></div>
+      <div class="bar"><i style="width:${p.probability * 100}%"></i></div>
+      <div class="p mono">${pct(p.probability)}</div>
+      <div class="why">${p.rationale ? esc(p.rationale) : ''}<span class="mono" style="font-size:12px">${price}</span>${verdict}</div>
+    </div>`;
+  }).join('') : '<p class="src-meta">No predictions yet.</p>';
+
+  return `<button class="close" aria-label="Close" onclick="closeDetail()">×</button>
+    ${badgeFor(d.outcome).replace('class="badge', 'style="display:inline-block;width:auto;padding:5px 10px" class="badge')}
+    <h3>${esc(d.question)}</h3>
+    <div class="facts">${facts}</div>
+    ${d.description ? `<details><summary>Resolution rules</summary><p>${esc(d.description)}</p></details>` : ''}
+    <h4>Search results sent to the models</h4>${search}
+    <h4>Model predictions · P(Yes)</h4>${preds}
+    <h4>Actual result</h4>
+    <div class="result-card">${badgeFor(d.outcome)}<span style="color:var(--muted)">${resolved ? `Resolved ${d.outcome ? 'Yes' : 'No'} on ${esc((d.resolved_at || '').slice(0, 10))}` : 'Not resolved yet. Scores appear here once Polymarket settles it.'}</span></div>`;
+}
+
+let detailSeq = 0;
+async function openDetail(id) {
+  const body = document.getElementById('drawer-body'), seq = ++detailSeq;
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('drawer').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  body.innerHTML = '<button class="close" aria-label="Close" onclick="closeDetail()">×</button><div class="loading">Loading…</div>';
+  try {
+    const r = await fetch(`/api/markets/${encodeURIComponent(id)}`);
+    if (!r.ok) throw new Error(r.status === 404 ? 'Market not found.' : `Request failed (${r.status}).`);
+    const d = await r.json();
+    if (seq === detailSeq) body.innerHTML = renderDetail(d);
+  } catch (e) {
+    if (seq === detailSeq) body.innerHTML = `<button class="close" aria-label="Close" onclick="closeDetail()">×</button><div class="loading">${esc(e.message)}</div>`;
+  }
+  document.getElementById('drawer').scrollTop = 0;
+}
+
+function hideDetail() {
+  document.getElementById('overlay').classList.remove('open');
+  document.getElementById('drawer').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function closeDetail() { if (location.hash.startsWith('#market/')) history.back(); else hideDetail(); }
+
+function route() {
+  const m = location.hash.match(/^#market\/(.+)$/);
+  if (m) openDetail(decodeURIComponent(m[1])); else hideDetail();
+}
+window.addEventListener('hashchange', route);
+document.getElementById('overlay').addEventListener('click', closeDetail);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('drawer').classList.contains('open')) closeDetail(); });
+document.getElementById('markets').addEventListener('click', e => {
+  const row = e.target.closest('.market'); if (row) location.hash = `market/${encodeURIComponent(row.dataset.id)}`;
+});
+document.getElementById('markets').addEventListener('keydown', e => {
+  const row = e.target.closest('.market'); if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); row.click(); }
+});
 
 function renderFilters() {
   const opts = [['all', 'All'], ['resolved', 'Resolved'], ['open', 'Open']];
@@ -332,6 +456,7 @@ async function load() {
   renderCalibration(markets, allModels);
   renderFilters();
   renderMarkets();
+  route();  // open a shared #market/<id> link after colors are known
 }
 load();
 </script>

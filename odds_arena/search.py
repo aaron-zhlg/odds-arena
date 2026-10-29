@@ -38,7 +38,7 @@ def _is_prediction_market(url: str) -> bool:
     return any(host == d or host.endswith("." + d) for d in PREDICTION_MARKET_DOMAINS)
 
 
-def _query(question: str) -> str:
+def query_for(question: str) -> str:
     # Brave accepts at most 75 words / 600 characters.
     return " ".join(question.split()[:75])[:600]
 
@@ -49,7 +49,8 @@ def clean(data: dict) -> list[dict]:
     out = []
     for item in (data.get("grounding") or {}).get("generic") or []:
         url = item.get("url", "")
-        if _is_prediction_market(url):
+        # An article whose title is about prediction markets is reporting their odds: drop it whole.
+        if _is_prediction_market(url) or PREDICTION_MARKET_WORDS.search(item.get("title", "")):
             continue
         snippets = [s for s in item.get("snippets") or [] if not PREDICTION_MARKET_WORDS.search(s)]
         if not snippets:
@@ -66,7 +67,7 @@ def clean(data: dict) -> list[dict]:
 
 def search_context(question: str, max_tokens: int | None = None, api_key: str | None = None) -> list[dict]:
     max_tokens = min(max_tokens or int(os.getenv("SEARCH_MAX_TOKENS", DEFAULT_MAX_TOKENS)), MAX_TOKENS_CAP)
-    params = {"q": _query(question), "maximum_number_of_tokens": max_tokens}
+    params = {"q": query_for(question), "maximum_number_of_tokens": max_tokens}
     headers = {"X-Subscription-Token": api_key or os.environ["BRAVE_API_KEY"], "Accept": "application/json"}
     for attempt in range(3):
         r = httpx.get(API_URL, params=params, headers=headers, timeout=30)
