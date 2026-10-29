@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Odds Arena</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<script>
+  // Vercel Web Analytics (HTML setup: https://vercel.com/docs/analytics/quickstart). The script is served by
+  // Vercel itself, so only load it there; locally it would just 404.
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    const va = document.createElement('script');
+    va.defer = true; va.src = '/_vercel/insights/script.js';
+    document.head.appendChild(va);
+  }
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
