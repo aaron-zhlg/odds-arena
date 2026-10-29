@@ -14,6 +14,8 @@ from urllib.parse import urlsplit
 import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from . import config  # noqa: F401  (loads .env)
+
 BASE_URL = os.getenv("POLYMARKET_US_API", "https://api.polymarket.us")
 
 

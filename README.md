@@ -46,6 +46,17 @@ which signs each request with Ed25519 as described in the [Polymarket US auth do
 3. Copy `POSTGRES_URL` into your local `.env`, then run `odds-arena predict` / `odds-arena resolve` from your machine.
    They write to Supabase, and the deployed site reads from it.
 
+### Automatic daily runs (Vercel Cron)
+
+`vercel.json` schedules `/api/cron/predict` (14:00 UTC) and `/api/cron/resolve` (15:00 UTC) once a day.
+Add these in Vercel → Settings → Environment Variables, then redeploy:
+
+- `CRON_SECRET`: random string (`openssl rand -hex 32`); the endpoints refuse every call without it
+- `OPENAI_API_KEY`, `ODDS_ARENA_MODELS` (e.g. `market,coinflip,openai`), optionally `OPENAI_MODEL`
+- optional: `CRON_PREDICT_LIMIT` (default 10 markets), `CRON_TIME_BUDGET` (default 45 s)
+
+Each run stops starting new work once the time budget is used and commits as it goes, so the next run continues.
+
 Without `POSTGRES_URL` everything uses a local SQLite file. On Vercel that file lives in `/tmp` and is wiped often,
 so a hosted database is needed for real data.
 

@@ -5,52 +5,15 @@ import argparse
 import random
 from datetime import date, timedelta
 
-from . import db, polymarket
-from .config import ENABLED_MODELS
-from .models import load_models
+from . import db, jobs
 
 
 def cmd_predict(args):
-    models = load_models(args.models or ENABLED_MODELS)
-    markets = polymarket.fetch_open_markets(limit=args.limit)
-    print(f"Fetched {len(markets)} open binary markets")
-    with db.connect() as conn:
-        for m in markets:
-            conn.execute(
-                "INSERT INTO markets (id, question, end_date) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING",
-                (m.id, m.question, m.end_date),
-            )
-            for model in models:
-                if conn.execute("SELECT 1 FROM predictions WHERE market_id=? AND model=?", (m.id, model.name)).fetchone():
-                    continue
-                try:
-                    pred = model.predict(m)
-                except Exception as e:  # one failing model shouldn't stop the others
-                    print(f"  [{model.name}] failed on {m.id}: {e}")
-                    continue
-                conn.execute(
-                    "INSERT INTO predictions (market_id, model, probability, market_price, rationale) VALUES (?, ?, ?, ?, ?)",
-                    (m.id, model.name, pred.probability, m.yes_price, pred.rationale),
-                )
-                print(f"  [{model.name}] {pred.probability:.2f}  {m.question[:70]}")
+    jobs.run_predict(limit=args.limit, model_names=args.models)
 
 
 def cmd_resolve(args):
-    with db.connect() as conn:
-        pending = conn.execute("SELECT id, question FROM markets WHERE outcome IS NULL").fetchall()
-        print(f"Checking {len(pending)} unresolved markets")
-        for row in pending:
-            try:
-                m = polymarket.fetch_market(row["id"])
-            except Exception as e:  # one bad lookup shouldn't stop the rest
-                print(f"  failed to fetch {row['id']}: {e}")
-                continue
-            if m.resolved_outcome is not None:
-                conn.execute(
-                    "UPDATE markets SET outcome=?, resolved_at=? WHERE id=?",
-                    (m.resolved_outcome, db.now(), m.id),
-                )
-                print(f"  resolved {'YES' if m.resolved_outcome else 'NO '}  {m.question[:70]}")
+    jobs.run_resolve()
 
 
 def cmd_demo(args):

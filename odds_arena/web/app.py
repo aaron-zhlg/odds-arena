@@ -1,13 +1,18 @@
+import hmac
+import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 
-from .. import db
+from .. import db, jobs
 from ..scoring import leaderboard
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI(title="Odds Arena")
+
+# Cron runs must finish inside the serverless time limit; jobs stop starting new work after this.
+CRON_TIME_BUDGET = float(os.getenv("CRON_TIME_BUDGET", "45"))
 
 
 @app.get("/")
@@ -39,3 +44,22 @@ def api_markets(limit: int = 50):
     for p in preds:
         by_market.setdefault(p["market_id"], {})[p["model"]] = {"p": p["probability"], "rationale": p["rationale"]}
     return [dict(m) | {"predictions": by_market.get(m["id"], {})} for m in markets]
+
+
+def _check_cron_auth(authorization: str | None):
+    # Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Without a secret configured, refuse.
+    secret = os.getenv("CRON_SECRET")
+    if not secret or not hmac.compare_digest(authorization or "", f"Bearer {secret}"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+@app.get("/api/cron/predict")
+def cron_predict(authorization: str | None = Header(default=None)):
+    _check_cron_auth(authorization)
+    return jobs.run_predict(limit=int(os.getenv("CRON_PREDICT_LIMIT", "10")), time_budget=CRON_TIME_BUDGET)
+
+
+@app.get("/api/cron/resolve")
+def cron_resolve(authorization: str | None = Header(default=None)):
+    _check_cron_auth(authorization)
+    return jobs.run_resolve(time_budget=CRON_TIME_BUDGET)
