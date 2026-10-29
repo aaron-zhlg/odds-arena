@@ -284,7 +284,7 @@
     <h1>Odds Arena</h1>
     <p class="tagline">Decision models make their calls on real Polymarket questions. Once the markets resolve, the scoreboard shows which model is right.</p>
     <div class="stats">
-      <div class="stat"><b class="mono" data-count="models">0</b><span>Models</span></div>
+      <div class="stat"><b class="mono" data-count="models">0</b><span>AI models</span></div>
       <div class="stat"><b class="mono" data-count="predictions">0</b><span>Predictions</span></div>
       <div class="stat"><b class="mono" data-count="resolved">0</b><span>Resolved</span></div>
       <div class="stat"><b class="mono" data-count="pending">0</b><span>Awaiting result</span></div>
@@ -806,7 +806,8 @@ async function load() {
   assignColors(allModels);
 
   const counts = {
-    models: allModels.length,
+    // Distinct AI models: the market baseline isn't one, and <model>+search is the same model with web results.
+    models: new Set(allModels.filter(k => k !== 'market').map(baseOf)).size,
     predictions: markets.reduce((s, m) => s + Object.keys(m.predictions).length, 0),
     resolved: markets.filter(m => m.outcome !== null).length,
     pending: lb.pending_markets,
