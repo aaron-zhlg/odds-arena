@@ -211,3 +211,47 @@ def test_iter_open_markets_pages_lazily_and_stops(monkeypatch):
     assert len(first) + len(list(it)) == 250 and offsets == [0, 100, 200]  # stops after the short last page
     offsets.clear()
     assert len(list(polymarket.iter_open_markets(within_days=None, max_pages=1))) == 100 and offsets == [0]
+
+
+def test_one_winner_event_is_forecast_as_a_unit(monkeypatch, tmp_path):
+    from odds_arena.models.base import Prediction as P
+    monkeypatch.setattr(db, "DATABASE_URL", None)
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
+    opt = lambda i, name, price: Market(id=i, question=f"Will {name} win?", description="", outcomes=["Yes", "No"],
+                                        prices=[price, 1 - price], end_date=None, closed=False, volume=1e5,
+                                        event_id="e1", event_title="Who wins?", group_title=name, neg_risk=True)
+    dem, rep = opt("d", "Democrats", 0.9), opt("r", "Republicans", 0.1)
+    event = jobs.polymarket.Event(id="e1", title="Who wins?", description="rules", end_date=None, options=[dem, rep])
+    monkeypatch.setattr(jobs.polymarket, "iter_open_markets", lambda **kw: [dem, rep])  # both options listed
+    fetches = []
+    monkeypatch.setattr(jobs.polymarket, "fetch_event", lambda eid: fetches.append(eid) or event)
+    searches = []
+    monkeypatch.setattr(jobs.search, "search_context", lambda q: searches.append(q) or [{"source": "x"}])
+
+    class Chooser(Recorder):
+        calls = 0
+        def predict_event(self, ev, context=None):
+            Chooser.calls += 1
+            self.seen.append(context)
+            return {"d": P(0.7, "c"), "r": P(0.3, "c")}
+
+    chooser, per_option = Chooser("c+search", True), Recorder("a", False)
+    monkeypatch.setattr(jobs, "load_models", lambda names: [chooser, per_option])
+    r = jobs.run_predict(model_names=["x"], log=lambda s: None)
+    assert r["markets"] == 1 and r["predictions"] == 4 and fetches == ["e1"]   # the event counted once
+    assert Chooser.calls == 1 and searches == ["Who wins?"]                     # one call, one search for the event
+    assert per_option.seen == [None, None]                                      # default: each option on its own
+    with db.connect() as conn:
+        got = {(x["market_id"], x["model"]): x["probability"] for x in conn.execute("SELECT * FROM predictions").fetchall()}
+        assert got[("d", "c+search")] == 0.7 and got[("r", "c+search")] == 0.3
+        assert conn.execute("SELECT COUNT(*) AS n FROM search_contexts").fetchone()["n"] == 2  # stored for each option
+        assert {x["neg_risk"] for x in conn.execute("SELECT neg_risk FROM markets").fetchall()} == {1}
+    assert jobs.run_predict(model_names=["x"], log=lambda s: None)["predictions"] == 0      # nothing left to do
+
+
+def test_question_kind_rules():
+    from odds_arena.polymarket import question_kind
+    assert question_kind(["Yes", "No"], True, "e") == "one_winner"
+    assert question_kind(["Yes", "No"], False, "e") == "yes_no"        # independent option of an event
+    assert question_kind(["Yes", "No"], False, None) == "yes_no"
+    assert question_kind(["Lakers", "Celtics"], False, None) == "matchup"

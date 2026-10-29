@@ -53,9 +53,11 @@
   @keyframes pulse { 50% { opacity: .3; } }
   h1 {
     margin: 18px 0 8px; font-size: clamp(44px, 9vw, 96px); line-height: .95; letter-spacing: -.04em; font-weight: 700;
-    background: linear-gradient(100deg, #f08a00 0%, #f5b400 40%, #0b74c9 85%);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+    background: linear-gradient(100deg, #f08a00 0%, #f5b400 25%, #0b74c9 50%, #f5b400 75%, #f08a00 100%);
+    background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: shine 8s linear infinite;
   }
+  @keyframes shine { to { background-position: -200% center; } }
   .tagline { color: var(--muted); font-size: 18px; max-width: 560px; margin: 0; }
 
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 36px 0 0; }
@@ -193,6 +195,14 @@
   .otable td.pk.hit { color: var(--yes); } .otable td.pk.hit::after { content: " ✓"; }
   .otable td.pk.miss { color: var(--no); } .otable td.pk.miss::after { content: " ✗"; }
   .hint-i { color: var(--muted); cursor: help; font-weight: 400; }
+  .split { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #fffdf8; display: grid; gap: 8px; }
+  .split-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  .split-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .split-row { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: center; }
+  .split-row .sn { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sbar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; gap: 2px; background: var(--soft); }
+  .sbar span { display: flex; align-items: center; justify-content: center; color: #fff; font: 600 11px "JetBrains Mono", monospace; min-width: 2px; text-shadow: 0 1px 1px rgba(0,0,0,.25); }
+  @media (max-width: 760px) { .split-row { grid-template-columns: 110px 1fr; gap: 8px; } }
   .opt-note { color: #7a5200; background: var(--sun-soft); border-radius: 6px; padding: 1px 6px; font-size: 11px; }
   .siblings { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .siblings a { font-size: 12px; text-decoration: none; color: var(--text); border: 1px solid var(--line-strong); border-radius: 99px; padding: 3px 10px; background: var(--card); }
@@ -525,7 +535,7 @@ function eventPicks(items) {
              verdict: winner ? (best.id === winner.id ? ' hit' : ' miss') : '' };
   });
 }
-const isExclusive = items => items.some(m => m.neg_risk);
+const isExclusive = items => items.some(m => m.kind === 'one_winner');  // kind comes from the server's rule
 
 function yesNoCard(m) {
   const ms = modelsOf(m);
@@ -645,7 +655,7 @@ function renderDetail(d) {
       predictions: Object.fromEntries(d.predictions.map(p => [p.model, p.probability])) }, ...d.siblings] : [];
   const optModels = [...new Set(opts.flatMap(o => Object.keys(o.predictions)))].filter(k => k !== 'coinflip')
     .sort((a, b) => (a === 'market' ? -1 : b === 'market' ? 1 : a.localeCompare(b)));
-  const exclusive = !!d.neg_risk;
+  const exclusive = d.kind === 'one_winner';
   const evPicks = exclusive && opts.length ? Object.fromEntries(eventPicks(opts.map(o => ({ ...o,
     predictions: Object.fromEntries(Object.entries(o.predictions).map(([k, v]) => [k, { p: v }])) }))).map(x => [x.model, x])) : {};
   const totals = exclusive ? `<tfoot>
@@ -661,6 +671,25 @@ function renderDetail(d) {
         const x = k === 'market' ? (crowdBest && { pick: crowdBest, verdict: '' }) : evPicks[k];
         return `<td class="pk${x ? x.verdict : ''}">${x ? esc(x.pick.group_title || x.pick.question) : '–'}</td>`;
       }).join('')}</tr></tfoot>` : '';
+  // One-winner event: how each model splits 100% across the options, one stacked bar per model.
+  // Options get their own colours (ordered by the crowd); models are named on each row, not coloured.
+  const OPT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+  const rankedOpts = [...opts].sort((a, b) => (b.predictions.market ?? -1) - (a.predictions.market ?? -1));
+  const shownOptsN = Math.min(rankedOpts.length, OPT_COLORS.length - 1);  // the rest fold into "Other options"
+  const optColor = i => i < shownOptsN ? OPT_COLORS[i] : '#b4b8c2';
+  const splitRows = exclusive && opts.length > 1 ? optModels.map(k => {
+    const parts = rankedOpts.map((o, i) => ({ label: o.group_title || o.question, p: o.predictions[k] ?? 0, i }));
+    const shown = parts.slice(0, shownOptsN), rest = parts.slice(shownOptsN).reduce((t, x) => t + x.p, 0);
+    if (rest > 0) shown.push({ label: 'Other options', p: rest, i: shownOptsN });
+    const total = shown.reduce((t, x) => t + x.p, 0) || 1;  // normalise so every bar spans 100%
+    return `<div class="split-row"><div class="sn">${sw(k)}${k === 'market' ? 'crowd' : esc(k)}</div><div class="sbar">${shown.filter(x => x.p > 0).map(x => {
+      const w = x.p / total * 100;
+      return `<span style="width:${w}%;background:${optColor(x.i)}" data-tip="<b>${esc(x.label)}</b> · ${pct(x.p)}${k === 'market' ? ' (crowd)' : ' (' + esc(k) + ')'}">${w >= 9 ? pct(x.p) : ''}</span>`;
+    }).join('')}</div></div>`;
+  }).join('') : '';
+  const splitChart = splitRows ? `<h4>How each model splits the win</h4><div class="split">
+    <div class="split-legend">${rankedOpts.slice(0, shownOptsN).map((o, i) => `<span><i style="background:${optColor(i)}"></i>${esc(o.group_title || o.question)}</span>`).join('')}${rankedOpts.length > shownOptsN ? `<span><i style="background:${optColor(shownOptsN)}"></i>Other options</span>` : ''}</div>
+    ${splitRows}</div>` : '';
   const optTable = opts.length ? `<h4>All options in this event · chance of each${exclusive ? ' · one winner' : ' · several can be Yes'}</h4><div class="otable"><table>
     <thead><tr><th>Option</th>${optModels.map(k => `<th>${sw(k)}${k === 'market' ? 'crowd' : esc(k)}</th>`).join('')}</tr></thead>
     <tbody>${opts.sort((a, b) => (b.predictions.market ?? -1) - (a.predictions.market ?? -1)).map(o => `<tr class="${o.id === d.id ? 'me' : ''}">
@@ -674,6 +703,7 @@ function renderDetail(d) {
     <div class="facts">${facts}</div>
     ${d.description ? `<details><summary>Resolution rules</summary><p>${esc(d.description)}</p></details>` : ''}
     ${isYesNo(d) ? '' : `<p class="src-meta" style="margin-top:12px">Outcomes: <b>${esc(d.outcomes[0])}</b> vs <b>${esc(d.outcomes[1])}</b>. Every percentage below is the chance of <b>${esc(d.outcomes[0])}</b>.</p>`}
+    ${splitChart}
     <h4>Model calls · chance of ${esc(firstOpt(d))}</h4>${preds}
     ${optTable}
     <h4>Actual result</h4>

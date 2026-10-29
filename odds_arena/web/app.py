@@ -7,6 +7,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 
 from .. import db, jobs
+from ..polymarket import question_kind
 from ..scoring import brier, leaderboard
 
 STATIC = Path(__file__).parent / "static"
@@ -53,6 +54,7 @@ def _market_json(row) -> dict:
     d = dict(row)
     # Older rows predate the outcomes column; they were all Yes/No markets.
     d["outcomes"] = json.loads(d["outcomes"]) if d.get("outcomes") else ["Yes", "No"]
+    d["kind"] = question_kind(d["outcomes"], bool(d.get("neg_risk")), d.get("event_id"))  # the one rule, server-side
     return d
 
 

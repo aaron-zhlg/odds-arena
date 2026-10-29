@@ -11,6 +11,9 @@ class MarketPriceModel(DecisionModel):
         return Prediction(market.yes_price, "Current Polymarket price")
 
 
+# MarketPriceModel keeps the per-option default for events: each option's own price is the crowd's chance.
+
+
 class CoinFlipModel(DecisionModel):
     """Baseline: always 50%. Any useful model should beat this."""
 

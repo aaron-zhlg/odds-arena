@@ -72,3 +72,21 @@ def test_named_outcome_probability_is_first_option(monkeypatch):
     monkeypatch.setattr(decision_api.httpx, "post", fake_post)
     pred = PerplexityModel(api_key="k").predict(NAMED)
     assert pred.probability == 0.3 and pred.rationale.endswith("choice")
+
+
+def test_event_choice_request_and_answer(monkeypatch):
+    from odds_arena.polymarket import Event
+    mk = lambda i, name: Market(id=i, question=f"{name}?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5],
+                                end_date=None, closed=False, volume=1e5, event_id="e", group_title=name, neg_risk=True)
+    ev = Event(id="e", title="Who wins?", description="rules", end_date="2026-11-04T00:00:00Z", options=[mk("a", "Ann"), mk("b", "Bob")])
+    req = decision_api.build_event_request(ev, "m", today=date(2026, 10, 28))
+    q = req["questions"]["winner"]
+    assert q["type"] == "choice" and list(q["criteria"]) == ["Ann", "Bob"] and req["state"]["options"] == ["Ann", "Bob"]
+
+    def fake_post(u, json, headers, timeout):
+        return httpx.Response(200, json={"model": "v9", "answers": {"winner": {"type": "choice", "probabilities": {"Ann": 0.8, "Bob": 0.2}}}},
+                              request=httpx.Request("POST", u))
+    monkeypatch.setattr(decision_api.httpx, "post", fake_post)
+    preds = TypesafeModel(api_key="k").predict_event(ev)
+    assert {k: v.probability for k, v in preds.items()} == {"a": 0.8, "b": 0.2}
+    assert "choice over 2 options" in preds["a"].rationale

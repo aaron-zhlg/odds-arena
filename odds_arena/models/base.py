@@ -23,3 +23,9 @@ class DecisionModel(ABC):
 
     @abstractmethod
     def predict(self, market: Market, context: list[dict] | None = None) -> Prediction: ...
+
+    def predict_event(self, event, context: list[dict] | None = None) -> dict[str, Prediction]:
+        """A one-winner event as a whole: {option market id: P(that option wins)}, summing to ~1.
+        The default asks about each option on its own; models that can weigh options against each
+        other (one Choice, one distribution) override it."""
+        return {m.id: self.predict(m, context) for m in event.options}

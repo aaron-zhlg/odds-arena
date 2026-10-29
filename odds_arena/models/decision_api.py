@@ -53,6 +53,30 @@ def build_request(market, model: str, today: date | None = None, context: list[d
     return req
 
 
+def build_event_request(event, model: str, today: date | None = None, context: list[dict] | None = None) -> dict:
+    """One Choice over every open option of a one-winner event, so the chances are weighed against each
+    other and add up to 1 (asking about each option alone gives answers that don't)."""
+    labels = [o.option_label for o in event.options]
+    req = {
+        "model": model,
+        "state": {
+            "event": event.title,
+            "options": labels,
+            "resolution_rules": event.description,
+            "closes": (event.end_date or "")[:10] or "unknown",
+            "today": (today or date.today()).isoformat(),
+        },
+        "questions": {"winner": {
+            "type": "choice",
+            "instructions": "Which of `options` will win `event` under `resolution_rules`?",
+            "criteria": {label: f'"{label}" wins' for label in labels},
+        }},
+    }
+    if context is not None:
+        req["state"]["search_results"] = context
+    return req
+
+
 class DecisionAPIModel(DecisionModel):
     """Subclasses set the endpoint, key and default model."""
 
@@ -85,3 +109,10 @@ class DecisionAPIModel(DecisionModel):
         else:
             p, kind = float(data["answers"]["outcome"]["probabilities"][market.outcomes[0]]), "choice"
         return Prediction(p, f"{self.label} {data.get('model', self.model)} {kind}")
+
+    def predict_event(self, event, context=None):
+        self.last_request = build_event_request(event, self.model, context=context)
+        data = self._post(self.last_request)
+        probs = data["answers"]["winner"]["probabilities"]
+        note = f"{self.label} {data.get('model', self.model)} choice over {len(event.options)} options"
+        return {o.id: Prediction(float(probs.get(o.option_label, 0.0)), note) for o in event.options}

@@ -8,6 +8,16 @@ Decision models forecast [Polymarket](https://polymarket.com) questions. Once ma
 2. **`odds-arena resolve`** re-checks open markets and records the outcome once Polymarket's oracle marks them `resolved` (closed alone isn't final).
 3. **`odds-arena serve`** runs the website: a leaderboard (Brier score, log loss, accuracy, skill vs. coin flip) plus every market. Click a market (or open `#market/<id>`) to see the search results the `+search` models received, each model's probability and rationale, and the actual result with per-model Brier scores.
 
+## Question types
+
+Decided only from Polymarket's own fields (`odds_arena/polymarket.py: question_kind`):
+
+| Kind | Rule | How models are asked |
+|------|------|----------------------|
+| `one_winner` | option of an event with `negRisk: true` (mutually exclusive, exactly one wins) | the whole event once: one Choice over all open options; chances add up to 100% |
+| `matchup` | two named outcomes ("Lakers" / "Celtics") | a Choice between the two |
+| `yes_no` | anything else, including an option of an event whose options resolve independently | a Noul (P Yes) |
+
 ## Models
 
 | Name | What it does |

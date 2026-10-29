@@ -41,6 +41,15 @@ class Market:
         return [o.lower() for o in self.outcomes] == ["yes", "no"]
 
     @property
+    def kind(self) -> str:
+        return question_kind(self.outcomes, self.neg_risk, self.event_id)
+
+    @property
+    def option_label(self) -> str:
+        """This market's option within its event ("Democratic Party"), or its question."""
+        return self.group_title or self.question
+
+    @property
     def yes_price(self) -> float:
         return self.prices[0]
 
@@ -55,6 +64,23 @@ class Market:
         if self.prices[0] <= 0.01:
             return 0
         return None
+
+
+# Question types, decided only from Polymarket's own fields:
+#   one_winner: an option of an event Polymarket trades as mutually exclusive (negRisk), e.g. "Which party
+#               wins the House?". Exactly one option resolves Yes, so the event is forecast as one Choice.
+#   matchup:    two named outcomes ("Lakers" / "Celtics", "Over" / "Under"), forecast as a Choice of two.
+#   yes_no:     everything else: a lone Yes/No question, or one option of an event whose options resolve
+#               independently (e.g. "ceasefire holds through Oct 31 / Nov 15": both can be Yes).
+YES_NO, MATCHUP, ONE_WINNER = "yes_no", "matchup", "one_winner"
+
+
+def question_kind(outcomes: list[str], neg_risk: bool, event_id: str | None) -> str:
+    if neg_risk and event_id:
+        return ONE_WINNER
+    if [o.lower() for o in outcomes] != ["yes", "no"]:
+        return MATCHUP
+    return YES_NO
 
 
 def _parse_list(value) -> list:
@@ -151,6 +177,31 @@ def fetch_price_history(token_id: str, range_: str = "1w", since: int | None = N
     r = httpx.get(f"{CLOB_API}/prices-history", params=params, timeout=30)
     r.raise_for_status()
     return [(int(p["t"]), float(p["p"])) for p in r.json().get("history", [])]
+
+
+@dataclass
+class Event:
+    id: str
+    title: str
+    description: str
+    end_date: str | None
+    options: list[Market]  # open options only
+
+
+def fetch_event(event_id: str) -> Event:
+    """A one-winner event with its open options (closed ones, e.g. a candidate who dropped out, are left out)."""
+    r = httpx.get(f"{GAMMA_API}/events/{event_id}", timeout=30)
+    r.raise_for_status()
+    e = r.json()
+    options = []
+    for raw in e.get("markets", []):
+        if raw.get("closed") or not raw.get("active", True):
+            continue
+        # Markets listed inside an event don't repeat the event, so attach it.
+        raw = raw | {"events": [{"id": e["id"], "title": e.get("title"), "slug": e.get("slug")}], "negRisk": e.get("negRisk")}
+        options.append(_to_market(raw))
+    return Event(id=str(e["id"]), title=e.get("title", ""), description=e.get("description") or "",
+                 end_date=e.get("endDate"), options=options)
 
 
 def fetch_market(market_id: str) -> Market:
