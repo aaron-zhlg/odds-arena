@@ -83,6 +83,11 @@ Add these in Vercel → Settings → Environment Variables, then redeploy:
 
 Each run stops starting new work once the time budget is used and commits as it goes, so the next run continues.
 
+Gaps are filled automatically: each predict run retries any model whose call failed (expired key, no credit)
+on every still-open question, including ones that have left the hot list. If a question's web search fails or
+returns nothing, the AI models skip it (no prediction without context) and the search is retried next run.
+Any failure marks the GitHub Actions run as failed, so GitHub notifies you.
+
 Without `POSTGRES_URL` everything uses a local SQLite file. On Vercel that file lives in `/tmp` and is wiped often,
 so a hosted database is needed for real data.
 

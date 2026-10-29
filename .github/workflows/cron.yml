@@ -35,8 +35,16 @@ jobs:
         # hourly schedule or a manual run; the 5-minute schedule only resolves
         if: github.event_name == 'workflow_dispatch' || github.event.schedule == '7 * * * *'
         run: |
-          curl --fail-with-body -sS -m 330 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/predict"
+          out=$(curl --fail-with-body -sS -m 330 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/predict")
+          echo "$out"
+          # Fail the run (GitHub then notifies the repo owner) when anything failed, not only on HTTP errors.
+          failed=$(echo "$out" | jq '.failed // 0')
+          if [ "$failed" -gt 0 ]; then echo "::error::$failed failed: an AI model or search call failed (expired key, no credit?); it is retried next run"; exit 1; fi
       - name: Resolve outcomes and sync prices
         if: always()
         run: |
-          curl --fail-with-body -sS -m 330 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/resolve"
+          out=$(curl --fail-with-body -sS -m 330 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/resolve")
+          echo "$out"
+          # Fail the run (GitHub then notifies the repo owner) when anything failed, not only on HTTP errors.
+          failed=$(echo "$out" | jq '.failed // 0')
+          if [ "$failed" -gt 0 ]; then echo "::error::$failed failed: a Polymarket lookup failed; it is retried next run"; exit 1; fi

@@ -26,6 +26,7 @@ def run_predict(limit: int = 10, model_names: list[str] | None = None, within_da
     models = load_models(model_names or ENABLED_MODELS)
     made = failed = worked = 0
     timed_out = False
+    hot: set[str] = set()
     with db.connect() as conn, ThreadPoolExecutor(max_workers=max(len(models), 1)) as pool:
         for event in polymarket.iter_hot_events(within_days=within_days):
             if worked >= limit:
@@ -36,7 +37,41 @@ def run_predict(limit: int = 10, model_names: list[str] | None = None, within_da
                 break
             n_made, n_failed, did = _predict_event(conn, pool, models, event, log)
             made, failed, worked = made + n_made, failed + n_failed, worked + did
+            hot.add(event.id)
+        # Backfill: open questions that are missing a model's prediction (a failed call, an expired key, a
+        # model added later), even if they've left the hot list. Settled ones are skipped: forecasting a
+        # known result would be meaningless.
+        for event_id in ([] if timed_out else _events_missing_predictions(conn, models)):
+            if event_id in hot:
+                continue
+            if worked >= limit or (deadline and time.monotonic() > deadline):
+                timed_out = bool(deadline and time.monotonic() > deadline)
+                break
+            try:
+                event = polymarket.fetch_event(event_id)
+            except Exception as e:
+                failed += 1
+                log(f"  backfill: couldn't load event {event_id}: {e}")
+                continue
+            if event.options and event.options[0].kind != polymarket.ONE_WINNER:
+                event.options = [o for o in event.options if polymarket._forecastable(o)]
+            if not event.options:
+                continue
+            log(f"  backfill: {event.title[:60]}")
+            n_made, n_failed, did = _predict_event(conn, pool, models, event, log)
+            made, failed, worked = made + n_made, failed + n_failed, worked + did
     return {"markets": worked, "predictions": made, "failed": failed, "timed_out": timed_out}
+
+
+def _events_missing_predictions(conn, models) -> list[str]:
+    """Events with an unsettled, not-yet-closed market that lacks a prediction from one of `models`."""
+    names = [m.name for m in models]
+    rows = conn.execute(
+        f"""SELECT DISTINCT m.event_id FROM markets m
+            WHERE m.outcome IS NULL AND m.event_id IS NOT NULL AND (m.end_date IS NULL OR m.end_date >= ?)
+              AND (SELECT COUNT(*) FROM predictions p WHERE p.market_id = m.id AND p.model IN ({",".join("?" * len(names))})) < ?""",
+        (db.now()[:10], *names, len(names))).fetchall()
+    return [r["event_id"] for r in rows]
 
 
 def _save_market(conn, m) -> None:
@@ -115,6 +150,8 @@ def _search_context(conn, market_ids: list[str], query: str, log: Log) -> list[d
     if row:
         return json.loads(row["results"])
     context = search.search_context(query)
+    if not context:  # nothing usable came back: treat as a failed search, store nothing, retry next run
+        raise RuntimeError("search returned no usable results")
     blob = json.dumps(context, ensure_ascii=False)
     conn.executemany(
         "INSERT INTO search_contexts (market_id, query, results) VALUES (?, ?, ?) ON CONFLICT (market_id) DO NOTHING",

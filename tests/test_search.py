@@ -234,7 +234,7 @@ def test_independent_options_are_one_call_per_model(monkeypatch, tmp_path):
     opt = lambda i: Market(id=i, question=f"BTC above {i}k?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5],
                            end_date=None, closed=False, volume=1e5, event_id="btc", event_title="Bitcoin above ___?")
     monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: as_events([opt("80"), opt("90"), opt("100")]))
-    monkeypatch.setattr(jobs.search, "search_context", lambda q: [])
+    monkeypatch.setattr(jobs.search, "search_context", lambda q: [{"source": "x", "snippets": ["s"]}])
 
     class Batcher(Recorder):
         calls = 0
@@ -330,3 +330,44 @@ def test_questions_api_groups_filters_and_pages(monkeypatch, tmp_path):
     meta = c.get("/api/meta").json()
     assert {k: meta[k] for k in ("categories", "resolved", "models")} == {"categories": {"Politics": 2, "Sports": 1, "Crypto": 1}, "resolved": 1, "models": ["openai"]}
     assert [m["id"] for m in c.get("/api/markets?resolved=1").json()] == ["s1"]
+
+
+
+def test_empty_search_means_no_ai_prediction_and_a_retry(monkeypatch, tmp_path):
+    monkeypatch.setattr(db, "DATABASE_URL", None)
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
+    m = Market(id="1", question="Q?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5], end_date=None, closed=False, volume=1e5)
+    monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: as_events([m]))
+    results = [[], [{"source": "a.com", "snippets": ["x"]}]]  # first search finds nothing, the retry does
+    monkeypatch.setattr(jobs.search, "search_context", lambda q: results.pop(0))
+    ai, crowd = Recorder("ai", True), Recorder("crowd", False)
+    monkeypatch.setattr(jobs, "load_models", lambda names: [crowd, ai])
+    first = jobs.run_predict(model_names=["x"], log=lambda s: None)
+    assert (first["predictions"], first["failed"], ai.seen) == (1, 1, [])          # only the crowd row; AI skipped
+    with db.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) AS n FROM search_contexts").fetchone()["n"] == 0  # nothing stored
+    second = jobs.run_predict(model_names=["x"], log=lambda s: None)
+    assert (second["predictions"], second["failed"]) == (1, 0) and ai.seen == [[{"source": "a.com", "snippets": ["x"]}]]
+
+
+def test_backfill_fills_open_questions_that_left_the_hot_list(monkeypatch, tmp_path):
+    from odds_arena.polymarket import Event
+    monkeypatch.setattr(db, "DATABASE_URL", None)
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
+    mk = lambda i, ev, end: Market(id=i, question=f"{i}?", description="", outcomes=["Yes", "No"], prices=[0.5, 0.5],
+                                   end_date=end, closed=False, volume=1e5, event_id=ev, event_title=ev)
+    with db.connect() as conn:  # predicted earlier by the crowd only; the AI model's call failed back then
+        for i, ev, end in (("o", "open-ev", "2099-01-01"), ("c", "closed-ev", "2000-01-01")):
+            conn.execute("INSERT INTO markets (id, question, event_id, end_date) VALUES (?, ?, ?, ?)", (i, f"{i}?", ev, end))
+            conn.execute("INSERT INTO predictions (market_id, model, probability) VALUES (?, 'crowd', 0.5)", (i,))
+    monkeypatch.setattr(jobs.polymarket, "iter_hot_events", lambda **kw: [])          # neither is hot any more
+    fetched = []
+    monkeypatch.setattr(jobs.polymarket, "fetch_event", lambda eid: fetched.append(eid) or
+                        Event(id=eid, title=eid, description="", end_date=None, options=[mk("o", eid, "2099-01-01")]))
+    monkeypatch.setattr(jobs.search, "search_context", lambda q: [{"source": "a", "snippets": ["x"]}])
+    ai, crowd = Recorder("ai", True), Recorder("crowd", False)
+    monkeypatch.setattr(jobs, "load_models", lambda names: [crowd, ai])
+    r = jobs.run_predict(model_names=["x"], log=lambda s: None)
+    assert fetched == ["open-ev"] and r["predictions"] == 1                       # the closed question is left alone
+    with db.connect() as conn:
+        assert conn.execute("SELECT model FROM predictions WHERE market_id = 'o' AND model = 'ai'").fetchone()
