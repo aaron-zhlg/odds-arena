@@ -1,0 +1,41 @@
+# Odds Arena
+
+Decision models forecast [Polymarket](https://polymarket.com) questions. Once markets resolve, each model is scored and compared on a leaderboard webpage.
+
+## How it works
+
+1. **`odds-arena predict`** pulls the highest-volume open binary markets from Polymarket's public Gamma API and asks every enabled model for P(Yes). Predictions are stored in SQLite, one per model per market (made once, never overwritten).
+2. **`odds-arena resolve`** re-checks open markets and records the outcome once Polymarket settles them.
+3. **`odds-arena serve`** runs the website: a leaderboard (Brier score, log loss, accuracy, skill vs. coin flip) plus a per-market table of every model's call.
+
+## Models
+
+| Name | What it does |
+|------|--------------|
+| `market` | Baseline: echoes the current Polymarket price (the crowd) |
+| `coinflip` | Baseline: always 50% |
+| `openai` | Asks an OpenAI model (`OPENAI_MODEL`) for a probability, without showing it the price |
+| `typesafe` | Placeholder HTTP client for the Typesafe model: fill in `odds_arena/models/typesafe_model.py` |
+
+Add a model: subclass `DecisionModel` in `odds_arena/models/`, implement `predict(market) -> Prediction`, and register it in `odds_arena/models/__init__.py`.
+
+## Quick start
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+cp .env.example .env   # add your API keys, choose ODDS_ARENA_MODELS
+
+odds-arena demo        # optional: seed fake resolved markets to preview the page
+odds-arena predict --limit 20
+odds-arena resolve     # run periodically (e.g. daily cron)
+odds-arena serve       # http://127.0.0.1:8000
+```
+
+## Scoring
+
+- **Brier score**: mean of (p − outcome)². Lower is better; always guessing 50% scores 0.25.
+- **Log loss**: punishes confident wrong calls much harder.
+- **Accuracy**: share of markets where p ≥ 0.5 matched the outcome.
+
+Markets resolve over weeks or months, so leave `predict` and `resolve` running on a schedule to build up a meaningful sample.

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Odds Arena</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #fff; --text: #1d1d1b; --muted: #6b6b66; --line: #e4e4df;
+    --accent: #2f6fed; --good: #1a8a4a; --bad: #c43d3d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141413; --card: #1e1e1c; --text: #ededea; --muted: #9a9a94; --line: #2e2e2b;
+            --accent: #6b9bff; --good: #4cc27d; --bad: #ef6b6b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  h2 { font-size: 17px; margin: 32px 0 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; min-width: 120px; }
+  .bar > span { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .rank { color: var(--muted); width: 32px; }
+  .q { white-space: normal; min-width: 260px; }
+  .yes { color: var(--good); font-weight: 600; } .no { color: var(--bad); font-weight: 600; }
+  .pending { color: var(--muted); }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .empty { padding: 24px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Odds Arena</h1>
+  <p class="sub">Decision models forecasting Polymarket questions, scored once the markets resolve.</p>
+
+  <h2>Leaderboard</h2>
+  <div class="card"><table id="board"></table></div>
+  <p class="hint">Ranked by Brier score (mean squared error of the probability; lower is better, 0.25 = coin flip).
+    Log loss punishes confident misses harder. Accuracy counts a call as right when p ≥ 0.5 matched the outcome.
+    <span id="pending"></span></p>
+
+  <h2>Recent markets</h2>
+  <div class="card"><table id="markets"></table></div>
+</main>
+<script>
+const fmt = (x, d = 3) => x.toFixed(d);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function load() {
+  const [lb, markets] = await Promise.all([
+    fetch('/api/leaderboard').then(r => r.json()),
+    fetch('/api/markets').then(r => r.json()),
+  ]);
+
+  const board = document.getElementById('board');
+  if (!lb.leaderboard.length) {
+    board.innerHTML = '<tr><td class="empty">No resolved markets yet. Run <code>odds-arena predict</code>, then <code>odds-arena resolve</code> later (or <code>odds-arena demo</code> for sample data).</td></tr>';
+  } else {
+    // Skill bar: how far below the coin-flip Brier (0.25) each model is.
+    const skill = r => Math.max(0, 1 - r.brier / 0.25);
+    const maxSkill = Math.max(...lb.leaderboard.map(skill), 0.01);
+    board.innerHTML = '<tr><th></th><th>Model</th><th>Resolved</th><th>Brier ↓</th><th>Log loss ↓</th><th>Accuracy</th><th>Skill vs coin flip</th></tr>' +
+      lb.leaderboard.map((r, i) => `<tr>
+        <td class="rank">${i + 1}</td><td><strong>${esc(r.model)}</strong></td>
+        <td class="num">${r.resolved}</td><td class="num">${fmt(r.brier)}</td><td class="num">${fmt(r.log_loss)}</td>
+        <td class="num">${fmt(r.accuracy * 100, 1)}%</td>
+        <td><div class="bar"><span style="width:${skill(r) / maxSkill * 100}%"></span></div></td></tr>`).join('');
+  }
+  document.getElementById('pending').textContent = lb.pending_markets ? `${lb.pending_markets} market(s) still awaiting resolution.` : '';
+
+  const models = [...new Set(markets.flatMap(m => Object.keys(m.predictions)))].sort();
+  const mt = document.getElementById('markets');
+  if (!markets.length) { mt.innerHTML = '<tr><td class="empty">No markets yet.</td></tr>'; return; }
+  mt.innerHTML = `<tr><th>Question</th><th>Result</th>${models.map(m => `<th>${esc(m)}</th>`).join('')}</tr>` +
+    markets.map(m => `<tr>
+      <td class="q">${esc(m.question)}</td>
+      <td>${m.outcome === null ? '<span class="pending">open</span>' : m.outcome ? '<span class="yes">YES</span>' : '<span class="no">NO</span>'}</td>
+      ${models.map(k => { const p = m.predictions[k];
+        return `<td class="num" title="${p ? esc(p.rationale || '') : ''}">${p ? fmt(p.p * 100, 0) + '%' : '–'}</td>`; }).join('')}
+    </tr>`).join('');
+}
+load();
+</script>
+</body>
+</html>
