@@ -358,10 +358,6 @@
     <span class="eyebrow"><span class="live"></span>Polymarket · live forecasting league</span>
     <h1>Odds Arena</h1>
     <p class="tagline">AI models make their calls on real Polymarket questions, each after reading the same fresh web search results. Once the markets resolve, the scoreboard shows which model is right.</p>
-    <div class="stats">
-      <div class="stat"><b class="mono" data-count="models">0</b><span>AI models</span></div>
-      <div class="stat"><b class="mono" data-count="resolved">0</b><span>Resolved</span></div>
-    </div>
   </header>
 
   <nav class="crumb" id="crumb" hidden><a href="/">← Odds Arena</a></nav>
@@ -1055,14 +1051,6 @@ async function load() {
     .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   assignColors(allModels);
 
-  const counts = {
-    // Distinct AI models: the market baseline isn't one.
-    models: new Set(allModels.filter(k => k !== 'market').map(baseOf)).size,
-    predictions: markets.reduce((s, m) => s + Object.keys(m.predictions).length, 0),
-    resolved: markets.filter(m => m.outcome !== null).length,
-    pending: lb.pending_markets,
-  };
-  document.querySelectorAll('[data-count]').forEach(el => countUp(el, counts[el.dataset.count]));
 
   renderPodium(board);
   renderBoard(board);
