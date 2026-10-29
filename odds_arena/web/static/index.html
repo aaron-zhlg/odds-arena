@@ -60,7 +60,7 @@
   @keyframes shine { to { background-position: -200% center; } }
   .tagline { color: var(--muted); font-size: 18px; max-width: 560px; margin: 0; }
 
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 36px 0 0; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 36px 0 0; }
   .stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
   .stat b { display: block; font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
   .stat span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
@@ -170,6 +170,16 @@
   .dn .dpick { font-size: 11px; line-height: 1.25; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
   .dn.hit { background: var(--yes-bg); } .dn.hit .dpick::after { content: " ✓"; color: var(--yes); }
   .dn.miss { background: var(--no-bg); } .dn.miss .dpick::after { content: " ✗"; color: var(--no); }
+  .otab { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .otab th, .otab td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap;
+                       font-family: "JetBrains Mono", monospace; letter-spacing: 0; text-transform: none; }
+  .otab th { font: 600 10px "Space Grotesk", sans-serif; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .otab th:first-child, .otab td.on { text-align: left; font-family: "Space Grotesk", sans-serif; }
+  .otab td.on { font-weight: 500; white-space: normal; padding-right: 8px; }
+  .otab td.cr { font-weight: 700; }
+  .otab tbody tr:last-child td { border-bottom: 0; }
+  .otab tr.orow { display: table-row; border-top: 0; padding: 0; }
+  .otab td.hit { color: var(--yes); } .otab td.miss { color: var(--no); }
   .olabel { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
   .olabel b { font-family: "JetBrains Mono", monospace; }
   .crowd-tag { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
@@ -327,7 +337,8 @@
   footer a { color: var(--sky); text-decoration: none; }
 
   @media (max-width: 760px) {
-    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stats { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat { padding: 12px; } .stat b { font-size: 24px; }
     .podium { grid-template-columns: 1fr; }
     .step.p1 { order: -1; }
     .grid2 { grid-template-columns: 1fr; }
@@ -351,7 +362,6 @@
       <div class="stat"><b class="mono" data-count="models">0</b><span>AI models</span></div>
       <div class="stat"><b class="mono" data-count="predictions">0</b><span>Predictions</span></div>
       <div class="stat"><b class="mono" data-count="resolved">0</b><span>Resolved</span></div>
-      <div class="stat"><b class="mono" data-count="pending">0</b><span>Awaiting result</span></div>
     </div>
   </header>
 
@@ -705,17 +715,24 @@ function donutCard(g, items) {
 function eventCard(g) {
   const items = [...g.items].sort((x, y) => (nowOf(y) ?? -1) - (nowOf(x) ?? -1));
   if (isExclusive(items)) return donutCard(g, items);  // shares add up to 100%: one donut per model
-  // Options that can each happen: one row per option with the crowd's price, AI models as dots.
+  // Options that can each happen: a small table, one row per option, the crowd's price then each AI model's chance.
   const head = items.find(m => m.outcome !== null) || items[0];
-  const row = m => `<div class="orow" data-id="${esc(m.id)}">
-      <div class="olabel"><span class="on">${esc(m.group_title || m.question)}${m.outcome === 1 ? ' <span class="won">✓</span>' : ''}</span><span><b>${nowOf(m) == null ? '–' : pct(nowOf(m))}</b> <span class="crowd-tag">crowd</span></span></div>
-      ${track(m, m.group_title || 'Yes')}</div>`;
+  const ai = [...new Set(items.flatMap(modelsOf))].sort();
+  const cell = (m, k) => {
+    const p = m.predictions[k]?.p;
+    return p == null ? '<td>–</td>' : `<td class="${sideClass(p, m.outcome).trim()}">${pct(p)}</td>`;
+  };
   return `<article class="card" tabindex="0" data-id="${esc(items[0].id)}">
     <div class="ctop"><span class="cat">${esc(head.category || 'Other')}</span><span>${esc(whenLeft(head.end_date))}</span></div>
     <div class="ttl">${esc(g.title || items[0].question)}</div>
-    <div class="sub">${items.length} options · each can happen · dots are AI models${predictedAgo(items)}</div>
-    <div class="orows">${items.slice(0, 3).map(row).join('')}</div>
-    ${items.length > 3 ? `<div class="more-opts">+${items.length - 3} more options</div>` : ''}
+    <div class="sub">${items.length} options · each can happen · chance of each${predictedAgo(items)}</div>
+    <table class="otab">
+      <thead><tr><th></th><th class="crowd-h">crowd</th>${ai.map(k => `<th><span class="tdot static" style="--c:${colorOf(k)}" title="${esc(k)}">${initialOf(k)}</span></th>`).join('')}</tr></thead>
+      <tbody>${items.slice(0, 4).map(m => `<tr class="orow" data-id="${esc(m.id)}">
+        <td class="on">${esc(m.group_title || m.question)}${m.outcome === 1 ? ' <span class="won">✓</span>' : ''}</td>
+        <td class="cr">${nowOf(m) == null ? '–' : pct(nowOf(m))}</td>${ai.map(k => cell(m, k)).join('')}</tr>`).join('')}</tbody>
+    </table>
+    ${items.length > 4 ? `<div class="more-opts">+${items.length - 4} more options</div>` : ''}
   </article>`;
 }
 
