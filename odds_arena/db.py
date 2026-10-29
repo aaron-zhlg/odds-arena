@@ -110,6 +110,11 @@ class _Postgres:
     def execute(self, sql: str, params=()):
         return self._conn.execute(sql.replace("?", "%s"), params)
 
+    def executemany(self, sql: str, rows):
+        # psycopg pipelines executemany, so many rows cost about one network round trip, not one each.
+        with self._conn.cursor() as cur:
+            cur.executemany(sql.replace("?", "%s"), rows)
+
     def commit(self):
         self._conn.commit()
 

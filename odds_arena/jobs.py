@@ -145,7 +145,6 @@ def _sync_prices(conn, m) -> int:
         points = polymarket.fetch_price_history(m.first_token, "all") + polymarket.fetch_price_history(m.first_token, "1w")
     else:
         points = polymarket.fetch_price_history(m.first_token, since=latest + 1)
-    for t, p in points:
-        conn.execute("INSERT INTO price_points (market_id, t, p) VALUES (?, ?, ?) ON CONFLICT (market_id, t) DO NOTHING",
-                     (m.id, t, p))
+    conn.executemany("INSERT INTO price_points (market_id, t, p) VALUES (?, ?, ?) ON CONFLICT (market_id, t) DO NOTHING",
+                     [(m.id, t, p) for t, p in points])
     return len(points)

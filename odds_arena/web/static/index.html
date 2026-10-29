@@ -529,7 +529,7 @@ function renderDetail(d) {
   ].filter(Boolean).join('');
 
   const search = !d.search
-    ? '<p class="src-meta">No web search for this question: none of the models that predicted it use search. Models whose name ends in <span class="mono">+search</span> get web results first; add them in <span class="mono">ODDS_ARENA_MODELS</span> to turn this on.</p>'
+    ? '<p class="src-meta">Web search is off for this question: no search-enabled model (name ending in <span class="mono">+search</span>) has predicted it yet, so nothing was searched. Search runs once per new question as soon as such a model is enabled.</p>'
     : `<p class="src-meta">Query <span class="mono">"${esc(d.search.query)}"</span> · fetched ${esc(d.search.created_at)} · ${d.search.results.length} sources. Every <span class="mono">+search</span> model received exactly this list.</p>` +
       (d.search.results.length ? d.search.results.map(s => `<div class="src">
         <div class="head"><b>${esc(s.title)}</b><span class="mono">${esc(s.published)}</span></div>
