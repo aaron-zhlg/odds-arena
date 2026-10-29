@@ -109,3 +109,23 @@ def test_stored_search_is_reused_and_served(monkeypatch, tmp_path):
     assert d["search"]["query"] == "Q7?" and d["search"]["results"] == [{"source": "a.com", "snippets": ["x"]}]
     assert [(p["model"], p["probability"], p["brier"]) for p in d["predictions"]] == [("b+search", 0.5, 0.25), ("c+search", 0.5, 0.25)]
     assert c.get("/api/markets/nope").status_code == 404
+
+
+def test_history_endpoint_caches_and_validates(monkeypatch):
+    from fastapi.testclient import TestClient
+    from odds_arena.web import app as web
+
+    web._history_cache.clear(); web._token_cache.clear()
+    calls = []
+    monkeypatch.setattr(web.polymarket, "fetch_yes_token", lambda mid: calls.append(("token", mid)) or "tok")
+    monkeypatch.setattr(web.polymarket, "fetch_price_history",
+                        lambda tok, r: calls.append(("hist", tok, r)) or [(1, 0.4), (2, 0.6)])
+    c = TestClient(web.app)
+    assert c.get("/api/markets/9/history?range=1d").json() == {"range": "1d", "points": [[1, 0.4], [2, 0.6]]}
+    c.get("/api/markets/9/history?range=1d")
+    c.get("/api/markets/9/history?range=1m")
+    assert calls == [("token", "9"), ("hist", "tok", "1d"), ("hist", "tok", "1m")]  # cached, token reused
+    assert c.get("/api/markets/9/history?range=5y").status_code == 400
+
+    monkeypatch.setattr(web.polymarket, "fetch_yes_token", lambda mid: (_ for _ in ()).throw(RuntimeError("404")))
+    assert c.get("/api/markets/nope/history").status_code == 502

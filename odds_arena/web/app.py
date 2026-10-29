@@ -1,12 +1,13 @@
 import hmac
 import json
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 
-from .. import db, jobs
+from .. import db, jobs, polymarket
 from ..scoring import brier, leaderboard
 
 STATIC = Path(__file__).parent / "static"
@@ -68,6 +69,29 @@ def api_market(market_id: str):
             dict(p) | {"brier": None if outcome is None else brier(p["probability"], outcome)} for p in preds
         ],
     }
+
+
+# Price history is public but rate limited; cache per (market, range) so repeat views don't refetch.
+HISTORY_TTL = 300
+_history_cache: dict[tuple[str, str], tuple[float, list]] = {}
+_token_cache: dict[str, str] = {}
+
+
+@app.get("/api/markets/{market_id}/history")
+def api_market_history(market_id: str, range: str = "1w"):
+    if range not in polymarket.HISTORY_RANGES:
+        raise HTTPException(status_code=400, detail=f"range must be one of {list(polymarket.HISTORY_RANGES)}")
+    hit = _history_cache.get((market_id, range))
+    if hit and time.time() - hit[0] < HISTORY_TTL:
+        return {"range": range, "points": hit[1]}
+    try:
+        token = _token_cache.get(market_id) or polymarket.fetch_yes_token(market_id)
+        _token_cache[market_id] = token
+        points = polymarket.fetch_price_history(token, range)
+    except Exception as e:  # unknown market, or Polymarket unavailable
+        raise HTTPException(status_code=502, detail=f"Price history unavailable: {e}")
+    _history_cache[(market_id, range)] = (time.time(), points)
+    return {"range": range, "points": points}
 
 
 def _check_cron_auth(authorization: str | None):

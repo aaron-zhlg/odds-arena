@@ -92,6 +92,27 @@ def fetch_open_markets(limit: int = 20, min_volume: float = 10_000, within_days:
     return [m for m in markets if m.is_yes_no and m.prices and m.volume >= min_volume][:limit]
 
 
+CLOB_API = "https://clob.polymarket.com"
+
+# range -> (CLOB interval, minutes per point)
+HISTORY_RANGES = {"1d": ("1d", 10), "1w": ("1w", 60), "1m": ("1m", 360), "all": ("max", 1440)}
+
+
+def fetch_yes_token(market_id: str) -> str:
+    r = httpx.get(f"{GAMMA_API}/markets/{market_id}", timeout=30)
+    r.raise_for_status()
+    return _parse_list(r.json().get("clobTokenIds"))[0]
+
+
+def fetch_price_history(token_id: str, range_: str = "1w") -> list[tuple[int, float]]:
+    """[(unix seconds, price of the Yes outcome)] from Polymarket's public CLOB API."""
+    interval, fidelity = HISTORY_RANGES[range_]
+    r = httpx.get(f"{CLOB_API}/prices-history",
+                  params={"market": token_id, "interval": interval, "fidelity": fidelity}, timeout=30)
+    r.raise_for_status()
+    return [(int(p["t"]), float(p["p"])) for p in r.json().get("history", [])]
+
+
 def fetch_market(market_id: str) -> Market:
     r = httpx.get(f"{GAMMA_API}/markets/{market_id}", timeout=30)
     r.raise_for_status()
