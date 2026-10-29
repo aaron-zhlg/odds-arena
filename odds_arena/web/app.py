@@ -18,6 +18,7 @@ CRON_TIME_BUDGET = float(os.getenv("CRON_TIME_BUDGET", "45"))
 
 
 @app.get("/")
+@app.get("/markets")  # full market list; the same page renders it from the path
 def index():
     return FileResponse(STATIC / "index.html")
 
@@ -38,21 +39,30 @@ def api_leaderboard():
 def api_markets(limit: int = 50):
     with db.connect() as conn:
         markets = conn.execute(
-            "SELECT id, question, end_date, outcome FROM markets ORDER BY COALESCE(resolved_at, end_date) DESC LIMIT ?",
+            """SELECT id, question, end_date, outcome, outcomes, event_id, event_title, event_slug, group_title
+               FROM markets ORDER BY COALESCE(resolved_at, end_date) DESC LIMIT ?""",
             (limit,),
         ).fetchall()
         preds = conn.execute("SELECT market_id, model, probability, rationale FROM predictions").fetchall()
     by_market: dict[str, dict] = {}
     for p in preds:
         by_market.setdefault(p["market_id"], {})[p["model"]] = {"p": p["probability"], "rationale": p["rationale"]}
-    return [dict(m) | {"predictions": by_market.get(m["id"], {})} for m in markets]
+    return [_market_json(m) | {"predictions": by_market.get(m["id"], {})} for m in markets]
+
+
+def _market_json(row) -> dict:
+    d = dict(row)
+    # Older rows predate the outcomes column; they were all Yes/No markets.
+    d["outcomes"] = json.loads(d["outcomes"]) if d.get("outcomes") else ["Yes", "No"]
+    return d
 
 
 @app.get("/api/markets/{market_id}")
 def api_market(market_id: str):
     with db.connect() as conn:
         m = conn.execute(
-            "SELECT id, question, end_date, outcome, resolved_at, description, slug FROM markets WHERE id = ?",
+            """SELECT id, question, end_date, outcome, resolved_at, description, slug, outcomes,
+                      event_id, event_title, event_slug, group_title FROM markets WHERE id = ?""",
             (market_id,),
         ).fetchone()
         if not m:
@@ -62,8 +72,14 @@ def api_market(market_id: str):
             "SELECT model, probability, market_price, rationale, created_at FROM predictions WHERE market_id = ? ORDER BY model",
             (market_id,),
         ).fetchall()
+        # The other options of the same multi-outcome event, e.g. the other parties in "Which party wins the House?"
+        siblings = conn.execute(
+            "SELECT id, question, group_title, outcome FROM markets WHERE event_id = ? AND id <> ? ORDER BY group_title",
+            (m["event_id"], market_id),
+        ).fetchall() if m["event_id"] else []
     outcome = m["outcome"]
-    return dict(m) | {
+    return _market_json(m) | {
+        "siblings": [dict(s) for s in siblings],
         "search": None if not ctx else {"query": ctx["query"], "created_at": ctx["created_at"], "results": json.loads(ctx["results"])},
         "predictions": [
             dict(p) | {"brier": None if outcome is None else brier(p["probability"], outcome)} for p in preds

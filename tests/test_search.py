@@ -129,3 +129,36 @@ def test_history_endpoint_caches_and_validates(monkeypatch):
 
     monkeypatch.setattr(web.polymarket, "fetch_yes_token", lambda mid: (_ for _ in ()).throw(RuntimeError("404")))
     assert c.get("/api/markets/nope/history").status_code == 502
+
+
+def test_markets_api_returns_outcomes_events_and_siblings(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from odds_arena.web.app import app
+
+    monkeypatch.setattr(db, "DATABASE_URL", None)
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "t.db"))
+    mk = lambda i, outcomes, ev, grp, price=0.5: Market(id=i, question=f"Q{i}?", description="", outcomes=outcomes, prices=[price, 1 - price],
+                                         end_date=None, closed=False, volume=1e5, event_id=ev, event_title="Which party?" if ev else None, group_title=grp)
+    markets = [mk("d", ["Yes", "No"], "e1", "Democrats"), mk("r", ["Yes", "No"], "e1", "Republicans"), mk("g", ["Lakers", "Celtics"], None, None)]
+    monkeypatch.setattr(jobs.polymarket, "fetch_open_markets", lambda **kw: markets)
+    monkeypatch.setattr(jobs, "load_models", lambda names: [Recorder("a", False)])
+    jobs.run_predict(model_names=["x"], log=lambda s: None)
+    with db.connect() as conn:  # a row from before the outcomes column existed
+        conn.execute("INSERT INTO markets (id, question) VALUES ('old', 'Old?')")
+
+    c = TestClient(app)
+    by_id = {m["id"]: m for m in c.get("/api/markets").json()}
+    assert by_id["g"]["outcomes"] == ["Lakers", "Celtics"] and by_id["old"]["outcomes"] == ["Yes", "No"]
+    assert (by_id["d"]["event_id"], by_id["d"]["event_title"], by_id["d"]["group_title"]) == ("e1", "Which party?", "Democrats")
+    d = c.get("/api/markets/d").json()
+    assert [s["group_title"] for s in d["siblings"]] == ["Republicans"] and c.get("/api/markets/g").json()["siblings"] == []
+
+
+def test_settled_looking_markets_are_skipped(monkeypatch):
+    from odds_arena import polymarket
+    raw = lambda i, p: {"id": i, "question": "Q", "outcomes": '["A", "B"]', "outcomePrices": f'["{p}", "{1 - p}"]', "volume": "1e6"}
+    class R:
+        def raise_for_status(self): pass
+        def json(self): return [raw("live", 0.6), raw("done", 0.995), raw("dead", 0.005)]
+    monkeypatch.setattr(polymarket.httpx, "get", lambda *a, **k: R())
+    assert [m.id for m in polymarket.fetch_open_markets(within_days=None)] == ["live"]

@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS search_contexts (
 """
 
 # Columns added after the first release; created on existing databases at connect time.
-MARKET_COLUMNS_ADDED = {"description": "TEXT", "slug": "TEXT"}
+MARKET_COLUMNS_ADDED = {
+    "description": "TEXT", "slug": "TEXT",
+    "outcomes": "TEXT",  # JSON list of the two outcome labels; `outcome` = 1 means the first one won
+    "event_id": "TEXT", "event_title": "TEXT", "event_slug": "TEXT", "group_title": "TEXT",
+}
 
 POSTGRES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS markets (
@@ -67,6 +71,11 @@ CREATE TABLE IF NOT EXISTS search_contexts (
 );
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS outcomes TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS event_id TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS event_title TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS event_slug TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS group_title TEXT;
 -- Supabase exposes public tables through its REST API. RLS with no policies blocks that;
 -- this app connects directly as the table owner, which RLS does not restrict.
 ALTER TABLE markets ENABLE ROW LEVEL SECURITY;

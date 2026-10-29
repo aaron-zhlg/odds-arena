@@ -50,3 +50,25 @@ def test_search_context_goes_into_state():
     req = decision_api.build_request(MARKET, "m", today=date(2026, 10, 28), context=ctx)
     assert req["state"]["search_results"] is ctx
     assert "search_results" not in decision_api.build_request(MARKET, "m")["state"]
+
+
+NAMED = Market(id="2", question="Lakers vs. Celtics", description="Resolves to the winner.", outcomes=["Lakers", "Celtics"],
+               prices=[0.55, 0.45], end_date="2026-11-01T23:59:00Z", closed=False, volume=1e5)
+
+
+def test_named_outcomes_use_a_choice():
+    req = decision_api.build_request(NAMED, "m", today=date(2026, 10, 28))
+    q = req["questions"]["outcome"]
+    assert q["type"] == "choice" and list(q["criteria"]) == ["Lakers", "Celtics"]
+    assert req["state"]["outcomes"] == ["Lakers", "Celtics"] and "resolves_yes" not in req["questions"]
+    # Yes/No markets keep the original Noul, unchanged
+    assert decision_api.build_request(MARKET, "m")["questions"] == {"resolves_yes": decision_api.QUESTION}
+
+
+def test_named_outcome_probability_is_first_option(monkeypatch):
+    def fake_post(u, json, headers, timeout):
+        return httpx.Response(200, json={"model": "v9", "answers": {"outcome": {"type": "choice", "choice": "Celtics",
+                              "probabilities": {"Lakers": 0.3, "Celtics": 0.7}}}}, request=httpx.Request("POST", u))
+    monkeypatch.setattr(decision_api.httpx, "post", fake_post)
+    pred = PerplexityModel(api_key="k").predict(NAMED)
+    assert pred.probability == 0.3 and pred.rationale.endswith("choice")

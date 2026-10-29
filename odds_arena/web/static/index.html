@@ -98,7 +98,15 @@
   .explain code { color: var(--sky); }
 
   /* Markets */
-  .filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .search { font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--card); min-width: min(320px, 100%); flex: 0 1 320px; }
+  .search:focus { outline: 2px solid var(--sun); outline-offset: 0; border-color: var(--sun); }
+  a.more { width: fit-content; text-decoration: none; }
+  .crumb { margin-bottom: 14px; }
+  .crumb a { color: var(--sky); text-decoration: none; font-weight: 500; }
+  .list-page section#markets-section { margin-top: 8px; }
+  .list-page h1 { font-size: 40px; }
   .chip { cursor: pointer; border: 1px solid var(--line-strong); background: var(--card); color: var(--muted); padding: 6px 14px; border-radius: 99px; font: inherit; font-size: 13px; transition: all .2s; }
   .chip:hover { color: var(--text); }
   .chip.on { color: #5a3a00; background: var(--sun-soft); border-color: var(--sun); font-weight: 500; }
@@ -116,6 +124,16 @@
   .mtable tr.market:hover td.qcell { background-color: #fff6dc; }
   .mtable tr.market:focus-visible td.qcell { box-shadow: inset 3px 0 0 var(--sun), 1px 0 0 var(--line); }
   .mtable .q { font-weight: 500; line-height: 1.35; }
+  .mtable tr.event td { background: #fbf6e8; font-weight: 600; font-size: 13px; padding-top: 10px; padding-bottom: 10px; }
+  .mtable tr.event td.qcell { background: #fbf6e8; }
+  .mtable tr.event .n { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .mtable tr.child td.qcell { padding-left: 34px; }
+  .mtable tr.child .q::before { content: "↳ "; color: var(--muted); }
+  .opt-note { color: #7a5200; background: var(--sun-soft); border-radius: 6px; padding: 1px 6px; font-size: 11px; }
+  .siblings { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .siblings a { font-size: 12px; text-decoration: none; color: var(--text); border: 1px solid var(--line-strong); border-radius: 99px; padding: 3px 10px; background: var(--card); }
+  .siblings a:hover { border-color: var(--sun); background: var(--sun-soft); }
+  .event-line { color: var(--muted); font-size: 13px; margin: -4px 0 8px; }
   .mtable .meta { color: var(--muted); font-size: 12px; margin-top: 4px; display: flex; gap: 8px; align-items: center; }
   .mtable .meta .badge { display: inline-block; width: auto; padding: 2px 7px; font-size: 10px; letter-spacing: .04em; }
   .cell { text-align: center; min-width: 72px; }
@@ -200,7 +218,7 @@
 <body>
 <div class="bg"><div class="sun"></div><div class="sky"></div></div>
 <main>
-  <header>
+  <header id="home-header">
     <span class="eyebrow"><span class="live"></span>Polymarket · live forecasting league</span>
     <h1>Odds Arena</h1>
     <p class="tagline">Decision models make their calls on real Polymarket questions. Once the markets resolve, the scoreboard shows which model is right.</p>
@@ -212,12 +230,13 @@
     </div>
   </header>
 
-  <section>
-    <h2>Markets</h2>
-    <p class="section-note">Every number is a model's probability that the question resolves <b>Yes</b> (73% means "73% likely Yes, 27% likely No"). The tag under each question is the real outcome once Polymarket settles it. After that, <b style="color:var(--yes)">✓</b> / <b style="color:var(--no)">✗</b> show whether each model leaned the right way (above or below 50%). <span class="mono">market</span> is the Polymarket price when the models predicted: the crowd to beat. Click a row for details.</p>
-    <div class="filters" id="filters"></div>
+  <nav class="crumb" id="crumb" hidden><a href="/">← Odds Arena</a></nav>
+  <section id="markets-section">
+    <h2 id="markets-title">Markets</h2>
+    <p class="section-note">Every number is a model's probability for the question's first option: <b>Yes</b> for yes/no questions (73% means "73% likely Yes, 27% likely No"), or the named option shown under the question, such as a team. Questions that belong to one multi-option event (e.g. "Which party wins the House?") are grouped under it, one row per option. The tag under each question is the real outcome once Polymarket settles it. After that, <b style="color:var(--yes)">✓</b> / <b style="color:var(--no)">✗</b> show whether each model leaned the right way (above or below 50%). <span class="mono">market</span> is the Polymarket price when the models predicted: the crowd to beat. Click a row for details.</p>
+    <div class="toolbar"><div class="filters" id="filters"></div><input id="search" class="search" type="search" placeholder="Search questions, options, events" hidden></div>
     <div class="panel" id="markets"></div>
-    <button class="chip more" id="more" onclick="shown += 20; renderMarkets()">Show more</button>
+    <a class="chip more" id="more" href="/markets">View all markets →</a>
   </section>
 
   <section id="podium-section">
@@ -367,40 +386,65 @@ function renderCalibration(markets, models) {
     : '<span>Lines appear once enough markets have resolved.</span>';
 }
 
-let allMarkets = [], allModels = [], filter = 'all', shown = 20;
+// "/markets" is the full list; the home page shows the latest few groups and links there.
+const LIST_PAGE = location.pathname.replace(/\/+$/, '') === '/markets';
+const HOME_GROUPS = 10;
+let allMarkets = [], allModels = [], filter = 'all', query = '';
+const shown = LIST_PAGE ? Infinity : HOME_GROUPS;
 const MODEL_INFO = {
   market: 'Baseline: the Polymarket price when the prediction was made (the crowd)',
   coinflip: 'Baseline: always 50%. Anything useful should beat it',
 };
 const ref = k => k === 'market';
+const isYesNo = m => (m.outcomes || ['Yes', 'No']).map(o => o.toLowerCase()).join('/') === 'yes/no';
+const firstOpt = m => (m.outcomes || ['Yes'])[0];
+const winner = m => m.outcome === null || m.outcome === undefined ? null : (m.outcomes || ['Yes', 'No'])[m.outcome ? 0 : 1];
+const statusTag = (m, tag = 'span') => m.outcome === null || m.outcome === undefined
+  ? `<${tag} class="badge open">Open</${tag}>`
+  : `<${tag} class="badge ${m.outcome ? 'yes' : 'no'}">Resolved: ${esc(winner(m))}</${tag}>`;
 
 function renderMarkets() {
   const el = document.getElementById('markets');
-  const all = allMarkets.filter(m => filter === 'all' || (filter === 'open' ? m.outcome === null : m.outcome !== null));
-  const list = all.slice(0, shown);
+  const q = query.trim().toLowerCase();
+  const all = allMarkets.filter(m => (filter === 'all' || (filter === 'open' ? m.outcome === null : m.outcome !== null))
+    && (!q || [m.question, m.group_title, m.event_title, ...(m.outcomes || [])].some(t => (t || '').toLowerCase().includes(q))));
+  // Group options of one multi-option event; a market alone in its event stays a plain row.
+  const groups = [], byEvent = {};
+  all.forEach(m => {
+    const key = m.event_id && all.filter(x => x.event_id === m.event_id).length > 1 ? 'e' + m.event_id : 'm' + m.id;
+    if (!byEvent[key]) groups.push(byEvent[key] = { key, title: m.event_title, items: [] });
+    byEvent[key].items.push(m);
+  });
+  const list = groups.slice(0, shown);
   const more = document.getElementById('more');
-  more.style.display = all.length > shown ? '' : 'none';
+  more.style.display = !LIST_PAGE && groups.length > shown ? '' : 'none';
+  more.textContent = `View all ${groups.length} markets →`;
+  if (LIST_PAGE) document.getElementById('markets-title').textContent = `All markets · ${groups.length}`;
   if (!list.length) { el.innerHTML = '<div class="empty">No markets here yet.</div>'; return; }
   const head = `<thead><tr><th class="qh">Question · result</th>${allModels.map(k =>
-    `<th class="${ref(k) ? 'ref' : ''}" title="${esc(MODEL_INFO[k] || k)}"><span class="swatch" style="--c:${colorOf(k)}"></span>${esc(k)}<span class="sub">P(Yes)</span></th>`).join('')}</tr></thead>`;
-  const rows = list.map(m => {
+    `<th class="${ref(k) ? 'ref' : ''}" title="${esc(MODEL_INFO[k] || k)}"><span class="swatch" style="--c:${colorOf(k)}"></span>${esc(k)}<span class="sub">% chance</span></th>`).join('')}</tr></thead>`;
+  const row = (m, child) => {
     const cells = allModels.map(k => {
       const p = m.predictions[k];
       if (!p) return '<td class="cell none">–</td>';
       // Exactly 50% picks no side, so it is neither right nor wrong.
       const side = m.outcome === null || p.p === 0.5 ? '' : ((p.p > 0.5 ? 1 : 0) === m.outcome ? ' hit' : ' miss');
-      return `<td class="cell${side}${ref(k) ? ' ref' : ''}" style="--c:${colorOf(k)}" title="${esc(k)}: ${pct(p.p)} yes${p.rationale ? ' · ' + esc(p.rationale) : ''}">
+      return `<td class="cell${side}${ref(k) ? ' ref' : ''}" style="--c:${colorOf(k)}" title="${esc(k)}: ${pct(p.p)} ${esc(firstOpt(m))}${p.rationale ? ' · ' + esc(p.rationale) : ''}">
         <div class="v">${pct(p.p)}</div><div class="mini"><i style="width:${p.p * 100}%"></i></div></td>`;
     }).join('');
-    const status = m.outcome === null ? '<span class="badge open">Open</span>' : m.outcome ? '<span class="badge yes">Resolved: Yes</span>' : '<span class="badge no">Resolved: No</span>';
-    return `<tr class="market" tabindex="0" data-id="${esc(m.id)}">
-      <td class="qcell"><div class="q">${esc(m.question)}</div><div class="meta">${status}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div></td>${cells}</tr>`;
-  }).join('');
+    const label = child && m.group_title ? m.group_title : m.question;
+    const opt = isYesNo(m) ? '' : `<span class="opt-note">% = chance of ${esc(firstOpt(m))}</span>`;
+    return `<tr class="market${child ? ' child' : ''}" tabindex="0" data-id="${esc(m.id)}">
+      <td class="qcell"><div class="q">${esc(label)}</div><div class="meta">${statusTag(m)}${opt}<span class="mono">${m.end_date ? 'closes ' + esc(m.end_date.slice(0, 10)) : ''}</span></div></td>${cells}</tr>`;
+  };
+  const rows = list.map(g => g.items.length > 1
+    ? `<tr class="event"><td class="qcell" colspan="1">${esc(g.title || 'Event')}<span class="n">${g.items.length} options</span></td><td colspan="${allModels.length}"></td></tr>` + g.items.map(m => row(m, true)).join('')
+    : row(g.items[0], false)).join('');
   el.innerHTML = `<table class="mtable">${head}<tbody>${rows}</tbody></table>`;
 }
 
 // ---- Market detail: opened via #market/<id>, so links are shareable and Back closes it ----
-const badgeFor = o => o === null || o === undefined ? '<div class="badge open">Open</div>' : o ? '<div class="badge yes">Resolved: Yes</div>' : '<div class="badge no">Resolved: No</div>';
+const badgeFor = m => statusTag(m, 'div');
 const utcTs = s => Date.parse(String(s).replace(' ', 'T') + (/[zZ+]/.test(String(s).slice(10)) ? '' : 'Z')) / 1000;
 const RANGES = [['1d', '1D'], ['1w', '1W'], ['1m', '1M'], ['all', 'All']];
 let detail = null, chartRange = '1w';
@@ -415,7 +459,7 @@ function renderDetail(d) {
   ].filter(Boolean).join('');
 
   const search = !d.search
-    ? '<p class="src-meta">No web search was run for this market (no <span class="mono">+search</span> model predicted it).</p>'
+    ? '<p class="src-meta">No web search for this question: none of the models that predicted it use search. Models whose name ends in <span class="mono">+search</span> get web results first; add them in <span class="mono">ODDS_ARENA_MODELS</span> to turn this on.</p>'
     : `<p class="src-meta">Query <span class="mono">"${esc(d.search.query)}"</span> · fetched ${esc(d.search.created_at)} · ${d.search.results.length} sources. Every <span class="mono">+search</span> model received exactly this list.</p>` +
       (d.search.results.length ? d.search.results.map(s => `<div class="src">
         <div class="head"><b>${esc(s.title)}</b><span class="mono">${esc(s.published)}</span></div>
@@ -439,18 +483,21 @@ function renderDetail(d) {
   }).join('') : '<p class="src-meta">No predictions yet.</p>';
 
   return `<button class="close" aria-label="Close" onclick="closeDetail()">×</button>
-    ${badgeFor(d.outcome).replace('class="badge', 'style="display:inline-block;width:auto;padding:5px 10px" class="badge')}
+    ${badgeFor(d).replace('class="badge', 'style="display:inline-block;width:auto;padding:5px 10px" class="badge')}
     <h3>${esc(d.question)}</h3>
+    ${d.event_title && (d.siblings || []).length ? `<div class="event-line">Option <b>${esc(d.group_title || '')}</b> of <b>${esc(d.event_title)}</b></div>` : ''}
     <div class="facts">${facts}</div>
     ${d.description ? `<details><summary>Resolution rules</summary><p>${esc(d.description)}</p></details>` : ''}
-    <div class="pc-head"><h4>Market price · P(Yes)</h4><div class="ranges" id="ranges">${RANGES.map(([k, l]) =>
+    ${(d.siblings || []).length ? `<div class="siblings">${d.siblings.map(x => `<a href="#market/${encodeURIComponent(x.id)}">${esc(x.group_title || x.question)}</a>`).join('')}</div>` : ''}
+    ${isYesNo(d) ? '' : `<p class="src-meta" style="margin-top:12px">Outcomes: <b>${esc(d.outcomes[0])}</b> vs <b>${esc(d.outcomes[1])}</b>. Every percentage below is the chance of <b>${esc(d.outcomes[0])}</b>.</p>`}
+    <div class="pc-head"><h4>Market price · P(${esc(firstOpt(d))})</h4><div class="ranges" id="ranges">${RANGES.map(([k, l]) =>
       `<button data-r="${k}" class="${k === chartRange ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <div class="pc" id="pc"><div class="loading" style="padding:60px 0;text-align:center">Loading price history…</div></div>
     <div class="pc-note" id="pc-note"></div>
     <h4>Search results sent to the models</h4>${search}
-    <h4>Model predictions · P(Yes)</h4>${preds}
+    <h4>Model predictions · P(${esc(firstOpt(d))})</h4>${preds}
     <h4>Actual result</h4>
-    <div class="result-card">${badgeFor(d.outcome)}<span style="color:var(--muted)">${resolved ? `Resolved ${d.outcome ? 'Yes' : 'No'} on ${esc((d.resolved_at || '').slice(0, 10))}` : 'Not resolved yet. Scores appear here once Polymarket settles it.'}</span></div>`;
+    <div class="result-card">${badgeFor(d)}<span style="color:var(--muted)">${resolved ? `Polymarket settled it as <b>${esc(winner(d))}</b> on ${esc((d.resolved_at || '').slice(0, 10))}` : 'Not resolved yet. Scores appear here once Polymarket settles it.'}</span></div>`;
 }
 
 const fmtTime = (t, span) => {
@@ -591,7 +638,17 @@ function renderFilters() {
   const opts = [['all', 'All'], ['resolved', 'Resolved'], ['open', 'Open']];
   const el = document.getElementById('filters');
   el.innerHTML = opts.map(([k, l]) => `<button class="chip ${k === filter ? 'on' : ''}" data-f="${k}">${l}</button>`).join('');
-  el.onclick = e => { const f = e.target.dataset.f; if (f) { filter = f; shown = 20; renderFilters(); renderMarkets(); } };
+  el.onclick = e => { const f = e.target.dataset.f; if (f) { filter = f; renderFilters(); renderMarkets(); } };
+}
+
+if (LIST_PAGE) {
+  document.body.classList.add('list-page');
+  document.title = 'All markets · Odds Arena';
+  document.getElementById('crumb').hidden = false;
+  document.getElementById('search').hidden = false;
+  document.getElementById('home-header').hidden = true;
+  document.querySelectorAll('main > section:not(#markets-section)').forEach(s => s.hidden = true);
+  document.getElementById('search').addEventListener('input', e => { query = e.target.value; renderMarkets(); });
 }
 
 async function load() {

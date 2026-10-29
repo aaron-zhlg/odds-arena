@@ -22,6 +22,11 @@ class Market:
     volume: float
     resolution_status: str | None = None  # UMA oracle status, "resolved" once final
     slug: str | None = None
+    # Multi-outcome events (e.g. "Which party wins the House?") are a group of binary markets, one per option.
+    event_id: str | None = None
+    event_title: str | None = None
+    event_slug: str | None = None
+    group_title: str | None = None  # this market's option within the event, e.g. "Democratic Party"
 
     @property
     def is_binary(self) -> bool:
@@ -58,6 +63,7 @@ def _parse_list(value) -> list:
 
 
 def _to_market(raw: dict) -> Market:
+    event = (raw.get("events") or [{}])[0]
     return Market(
         id=str(raw["id"]),
         question=raw.get("question", ""),
@@ -69,11 +75,15 @@ def _to_market(raw: dict) -> Market:
         volume=float(raw.get("volume") or 0),
         resolution_status=raw.get("umaResolutionStatus"),
         slug=raw.get("slug"),
+        event_id=str(event["id"]) if event.get("id") else None,
+        event_title=event.get("title"),
+        event_slug=event.get("slug"),
+        group_title=raw.get("groupItemTitle") or None,
     )
 
 
 def fetch_open_markets(limit: int = 20, min_volume: float = 10_000, within_days: float | None = 30) -> list[Market]:
-    """Highest-volume open Yes/No markets. `within_days` keeps only markets ending that soon,
+    """Highest-volume open two-outcome markets. `within_days` keeps only markets ending that soon,
     so results (and scores) arrive in days rather than years; None means any end date."""
     params = {
         "active": "true",
@@ -89,7 +99,11 @@ def fetch_open_markets(limit: int = 20, min_volume: float = 10_000, within_days:
     r = httpx.get(f"{GAMMA_API}/markets", params=params, timeout=30)
     r.raise_for_status()
     markets = [_to_market(m) for m in r.json()]
-    return [m for m in markets if m.is_yes_no and m.prices and m.volume >= min_volume][:limit]
+    # Every Polymarket market has two outcomes: Yes/No, or two named options ("Lakers" / "Celtics", "Over" / "Under").
+    # Skip markets the crowd already treats as settled (e.g. a game that has ended but isn't resolved yet):
+    # there is nothing left to forecast.
+    return [m for m in markets if m.is_binary and m.prices and m.volume >= min_volume
+            and 0.02 <= m.yes_price <= 0.98][:limit]
 
 
 CLOB_API = "https://clob.polymarket.com"

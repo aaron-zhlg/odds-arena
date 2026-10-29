@@ -11,7 +11,7 @@ from .base import DecisionModel, Prediction
 
 PROMPT = """You are a forecaster. Estimate the probability that the answer to this prediction-market question is "{yes}".
 
-Question: {question}
+Question: {question}{options}
 Resolution details: {description}
 Market closes: {end_date}
 Today: {today}{search}
@@ -37,6 +37,7 @@ class OpenAIModel(DecisionModel):
                 "content": PROMPT.format(
                     yes=market.outcomes[0],
                     question=market.question,
+                    options="" if market.is_yes_no else f"\nPossible outcomes: {' / '.join(market.outcomes)}",
                     description=market.description[:2000],
                     end_date=market.end_date,
                     today=date.today().isoformat(),

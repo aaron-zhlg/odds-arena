@@ -1,9 +1,10 @@
 """Decision models (TypeSafe Jev, Perplexity decider) as forecasters.
 
 Both APIs take a `state` plus named typed questions and return a probability per question.
-We ask one Noul per market: the probability that it resolves Yes. They don't see the market
-price, same as the OpenAI model. The question wording lives in QUESTION, shared by every
-decision model so their scores are comparable.
+A Yes/No market gets one Noul (P resolves Yes); a market with two named outcomes ("Lakers" /
+"Celtics") gets one Choice between them, and we keep P(first outcome). They don't see the market
+price, same as the OpenAI model. The question wording lives here, shared by every decision model
+so their scores are comparable.
 """
 from __future__ import annotations
 
@@ -25,7 +26,16 @@ QUESTION = {
 }
 
 
+def choice_question(outcomes: list[str]) -> dict:
+    return {
+        "type": "choice",
+        "instructions": "Which of `outcomes` will `question` resolve to under `resolution_rules`?",
+        "criteria": {o: f'The market resolves to "{o}"' for o in outcomes},
+    }
+
+
 def build_request(market, model: str, today: date | None = None, context: list[dict] | None = None) -> dict:
+    yes_no = market.is_yes_no
     req = {
         "model": model,
         "state": {
@@ -34,8 +44,10 @@ def build_request(market, model: str, today: date | None = None, context: list[d
             "closes": (market.end_date or "")[:10] or "unknown",
             "today": (today or date.today()).isoformat(),
         },
-        "questions": {"resolves_yes": QUESTION},
+        "questions": {"resolves_yes": QUESTION} if yes_no else {"outcome": choice_question(market.outcomes)},
     }
+    if not yes_no:
+        req["state"]["outcomes"] = market.outcomes
     if context is not None:
         req["state"]["search_results"] = context
     return req
@@ -68,5 +80,8 @@ class DecisionAPIModel(DecisionModel):
     def predict(self, market, context=None):
         self.last_request = build_request(market, self.model, context=context)
         data = self._post(self.last_request)
-        p = float(data["answers"]["resolves_yes"]["noul"])
-        return Prediction(p, f"{self.label} {data.get('model', self.model)} noul")
+        if market.is_yes_no:
+            p, kind = float(data["answers"]["resolves_yes"]["noul"]), "noul"
+        else:
+            p, kind = float(data["answers"]["outcome"]["probabilities"][market.outcomes[0]]), "choice"
+        return Prediction(p, f"{self.label} {data.get('model', self.model)} {kind}")
